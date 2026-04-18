@@ -173,6 +173,13 @@ function app() {
       return 'Rp ' + Number(n).toLocaleString('id-ID');
     },
 
+    formatDurationMinutes(durationMinutes) {
+      const minutes = Number(durationMinutes || 0);
+      if (!minutes) return '-';
+      if (minutes % 60 === 0) return `${minutes / 60} jam`;
+      return `${minutes} menit`;
+    },
+
     formatTime(dt) {
       if (!dt) return '-';
       return this.parseServerDate(dt).toLocaleString('id-ID', {
@@ -551,27 +558,48 @@ function app() {
 
     openAddPricing() {
       if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
-      this.form = { label: '', price: '', type: 'package', duration_minutes: '' };
+      this.form = { label: '', price: '', type: 'package', duration_value: '', duration_unit: 'hours' };
       this.modal = 'addPricing';
     },
 
     openEditPricing(p) {
       if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
-      this.form = { ...p };
+      const minutes = Number(p.duration_minutes || 0);
+      const isHourUnit = minutes > 0 && minutes % 60 === 0;
+      this.form = {
+        ...p,
+        duration_value: minutes ? (isHourUnit ? minutes / 60 : minutes) : '',
+        duration_unit: isHourUnit ? 'hours' : 'minutes'
+      };
       this.modal = 'addPricing';
     },
 
     async savePricing() {
       const method = this.form.id ? 'PUT' : 'POST';
       const path = this.form.id ? `/pricing/${this.form.id}` : '/pricing';
+      const durationRaw = Number(this.form.duration_value || 0);
+      const durationMinutes = this.form.type === 'open'
+        ? null
+        : (this.form.duration_unit === 'hours' ? durationRaw * 60 : durationRaw);
+      if (this.form.type !== 'open' && durationMinutes <= 0) {
+        this.showToast('Durasi paket harus lebih dari 0', 'error');
+        return;
+      }
+
+      const payload = {
+        ...this.form,
+        duration_minutes: this.form.type === 'open' ? null : durationMinutes
+      };
       const r = await this.api(path, {
         method,
-        body: JSON.stringify(this.form)
+        body: JSON.stringify(payload)
       });
       if (r.success) {
         this.showToast('✅ Paket disimpan');
         this.modal = '';
         this.loadPricing();
+      } else {
+        this.showToast(r.error || 'Gagal simpan paket', 'error');
       }
     },
 

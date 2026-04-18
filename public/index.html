@@ -214,7 +214,7 @@
             <div class="pricing-label" x-text="p.label"></div>
             <div class="pricing-price" x-text="formatRp(p.price)"></div>
             <div class="pricing-type" x-text="p.type === 'open' ? 'Per Jam' : p.type === 'hourly' ? 'Per Jam' : 'Paket'"></div>
-            <div class="pricing-duration" x-show="p.duration_minutes" x-text="(p.duration_minutes/60)+' jam'"></div>
+            <div class="pricing-duration" x-show="p.duration_minutes" x-text="formatDurationMinutes(p.duration_minutes)"></div>
             <button class="btn btn-sm btn-ghost mt-2" x-show="isAdmin" @click="openEditPricing(p)">Edit</button>
             <button class="btn btn-sm btn-danger" x-show="isAdmin" @click="deletePricing(p.id)" style="margin-left:5px;">Hapus</button>
           </div>
@@ -519,7 +519,16 @@
           <option value="open">Open (per jam, bebas)</option>
         </select>
       </div>
-      <div class="form-group"><label>Durasi (menit, kosongkan jika open)</label><input class="input" type="number" x-model="form.duration_minutes" /></div>
+      <div class="form-group" x-show="form.type !== 'open'">
+        <label>Durasi Paket</label>
+        <div style="display:flex; gap:8px;">
+          <input class="input" type="number" min="1" x-model.number="form.duration_value" placeholder="Contoh: 2" />
+          <select class="input" style="max-width:140px;" x-model="form.duration_unit">
+            <option value="hours">Jam</option>
+            <option value="minutes">Menit</option>
+          </select>
+        </div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" @click="modal=''">Batal</button>
