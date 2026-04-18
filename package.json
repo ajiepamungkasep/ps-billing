@@ -1,0 +1,17 @@
+{
+  "name": "ps-billing",
+  "version": "1.0.0",
+  "description": "PS Rental Billing System - Built with Hono + Bun + SQLite",
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "start": "bun run src/index.ts",
+    "build": "bun build src/index.ts --compile --outfile ps-billing"
+  },
+  "dependencies": {
+    "hono": "^4.4.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="id" x-data="app()" x-init="checkAuth()">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PS Billing System</title>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+<!-- Login Screen -->
+<div x-show="authChecked && !isLoggedIn" x-cloak style="display:flex; height:100vh; align-items:center; justify-content:center; background:var(--bg);">
+  <div class="card" style="width:100%; max-width:360px; padding:40px 30px; text-align:center; margin: auto;">
+    <h2 style="margin-bottom:20px; font-size:28px;">🎮 PS Billing</h2>
+    <p style="color:var(--text-muted); margin-bottom:25px; font-size:14px;">Sistem Manajemen Rental PlayStation</p>
+    <select class="input" x-model="loginRole" style="margin-bottom:15px; width:100%; padding:10px;">
+      <option value="admin">👤 Admin</option>
+      <option value="user">👥 User</option>
+    </select>
+    <input type="password" class="input" placeholder="Masukkan Password" x-model="loginPassword" @keyup.enter="login()" style="margin-bottom:20px; width:100%; padding:10px; text-align:center;">
+    <button class="btn btn-primary btn-block" @click="login()" style="width:100%; padding:12px; font-size:16px;">Login</button>
+  </div>
+</div>
+
+<!-- Main App Layout -->
+<div class="layout" x-show="authChecked && isLoggedIn" x-cloak>
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <span class="logo-icon">🎮</span>
+      <span class="logo-text">PS Billing</span>
+    </div>
+      
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-item" :class="{active: page==='dashboard'}" @click="page='dashboard'">
+        <span>📊</span> Dashboard
+      </a>
+      <a href="#" class="nav-item" :class="{active: page==='stations'}" @click="page='stations'; loadStations()">
+        <span>🕹️</span> Stations
+      </a>
+      <a href="#" class="nav-item" :class="{active: page==='products'}" @click="page='products'; loadProducts()">
+        <span>🛍️</span> Produk
+      </a>
+      <a href="#" class="nav-item" :class="{active: page==='pricing'}" @click="page='pricing'; loadPricing()">
+        <span>💰</span> Paket Harga
+      </a>
+      <a href="#" class="nav-item" :class="{active: page==='cashflow'}" @click="page='cashflow'; loadCashflow()">
+        <span>💵</span> Cash Flow
+      </a>
+      <a href="#" class="nav-item" :class="{active: page==='history'}" @click="page='history'; loadHistory()">
+        <span>📋</span> Riwayat
+      </a>
+      <hr style="border:none; border-top:1px solid var(--border); margin:10px 0;">
+      <a href="#" class="nav-item text-red" @click="logout()">
+        <span>🚪</span> Logout
+      </a>
+    </nav>
+    <div class="sidebar-clock" x-text="clock"></div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+
+    <!-- ═══ DASHBOARD ════════════════════════════════════════════════════════ -->
+    <div x-show="page==='dashboard'">
+      <div class="page-header">
+        <h1>Dashboard</h1>
+        <button class="btn btn-ghost" @click="loadDashboard()">↻ Refresh</button>
+      </div>
+
+      <!-- Stats Cards -->
+      <div class="stats-grid">
+        <div class="stat-card stat-blue">
+          <div class="stat-label">Total Station</div>
+          <div class="stat-value" x-text="stats.total_stations || 0"></div>
+        </div>
+        <div class="stat-card stat-green">
+          <div class="stat-label">Sedang Main</div>
+          <div class="stat-value" x-text="stats.active_stations || 0"></div>
+        </div>
+        <div class="stat-card stat-yellow">
+          <div class="stat-label">Sesi Hari Ini</div>
+          <div class="stat-value" x-text="stats.today_sessions || 0"></div>
+        </div>
+        <div class="stat-card stat-purple">
+          <div class="stat-label">Pendapatan Hari Ini</div>
+          <div class="stat-value" x-text="formatRp(stats.today_income || 0)"></div>
+        </div>
+        <div class="stat-card stat-orange">
+          <div class="stat-label">Pendapatan Bulan Ini</div>
+          <div class="stat-value" x-text="formatRp(stats.month_income || 0)"></div>
+        </div>
+      </div>
+
+      <!-- Active Stations Quick View -->
+      <div class="card mt-4">
+        <div class="card-header">
+          <h2>🕹️ Status Station</h2>
+          <button class="btn btn-sm btn-primary" @click="page='stations'; loadStations()">Kelola →</button>
+        </div>
+        <div class="station-quick-grid">
+          <template x-for="s in stations" :key="s.id">
+            <div class="station-quick-card" :class="s.status">
+              <div class="sq-name" x-text="s.name"></div>
+              <div class="sq-status" x-text="s.status === 'in_use' ? '🔴 Dipakai' : s.status === 'maintenance' ? '🟡 Maintenance' : '🟢 Tersedia'"></div>
+              <div x-show="s.status==='in_use'" class="sq-customer" x-text="s.customer_name || 'Guest'"></div>
+              <div x-show="s.status==='in_use'" class="sq-timer" x-text="s.pricing_label"></div>
+              <div class="sq-actions" x-show="s.status==='available'">
+                <button class="btn btn-sm btn-primary" @click="openStartBilling(s)">▶ Mulai</button>
+              </div>
+              <div class="sq-actions" x-show="s.status==='in_use'">
+                <button class="btn btn-sm btn-danger" @click="openStopBilling(s)">⏹ Stop</button>
+                <button class="btn btn-sm btn-ghost" @click="openAddOrder(s)">+ Order</button>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ STATIONS PAGE ════════════════════════════════════════════════════ -->
+    <div x-show="page==='stations'">
+      <div class="page-header">
+        <h1>🕹️ Stations</h1>
+        <button class="btn btn-primary" @click="openAddStation()">+ Tambah Station</button>
+      </div>
+      <div class="stations-grid">
+        <template x-for="s in stations" :key="s.id">
+          <div class="station-card" :class="s.status">
+            <div class="sc-header">
+              <div>
+                <div class="sc-name" x-text="s.name"></div>
+                <div class="sc-type" x-text="s.type"></div>
+              </div>
+              <div class="sc-badge" :class="'badge-'+s.status" x-text="s.status === 'in_use' ? 'In Use' : s.status === 'maintenance' ? 'Maintenance' : 'Available'"></div>
+            </div>
+            <div x-show="s.status==='in_use'" class="sc-session-info">
+              <div><b>Customer:</b> <span x-text="s.customer_name || 'Guest'"></span></div>
+              <div><b>Paket:</b> <span x-text="s.pricing_label"></span></div>
+              <div><b>Mulai:</b> <span x-text="formatTime(s.start_time)"></span></div>
+              <div class="sc-timer" x-text="'⏱ '+getElapsed(s.start_time)"></div>
+            </div>
+            <div class="sc-actions">
+              <template x-if="s.status==='available'">
+                <button class="btn btn-primary btn-block" @click="openStartBilling(s)">▶ Mulai Sesi</button>
+              </template>
+              <template x-if="s.status==='in_use'">
+                <div class="btn-group">
+                  <button class="btn btn-danger" @click="openStopBilling(s)">⏹ Stop & Bayar</button>
+                  <button class="btn btn-secondary" @click="openAddOrder(s)">🛍 Order</button>
+                </div>
+              </template>
+              <template x-if="s.status==='maintenance'">
+                <button class="btn btn-ghost" @click="setMaintenance(s.id, false)">✓ Set Available</button>
+              </template>
+            </div>
+            <div class="sc-footer">
+              <button class="btn-link" @click="setMaintenance(s.id, s.status !== 'maintenance')" x-show="s.status !== 'in_use'">
+                <span x-text="s.status === 'maintenance' ? '✓ Aktifkan' : '🔧 Maintenance'"></span>
+              </button>
+              <button class="btn-link text-red" x-show="isAdmin && s.status !== 'in_use'" @click="deleteStation(s.id)">🗑 Hapus</button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- ═══ PRODUCTS ════════════════════════════════════════════════════════ -->
+    <div x-show="page==='products'">
+      <div class="page-header">
+        <h1>🛍️ Produk</h1>
+        <button class="btn btn-primary" x-show="isAdmin" @click="openAddProduct()">+ Tambah Produk</button>
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr><th>Nama</th><th>Kategori</th><th>Harga</th><th>Stok</th><th>Aksi</th></tr>
+          </thead>
+          <tbody>
+            <template x-for="p in products" :key="p.id">
+              <tr>
+                <td x-text="p.name"></td>
+                <td><span class="badge" x-text="p.category"></span></td>
+                <td x-text="formatRp(p.price)"></td>
+                <td>
+                  <span :class="p.stock < 5 ? 'text-red' : ''" x-text="p.stock"></span>
+                </td>
+                <td>
+                  <button class="btn btn-sm btn-ghost" x-show="isAdmin" @click="openEditProduct(p)">Edit</button>
+                  <button class="btn btn-sm btn-danger" x-show="isAdmin" @click="deleteProduct(p.id)" style="margin-left:5px;">Hapus</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══ PRICING ════════════════════════════════════════════════════════ -->
+    <div x-show="page==='pricing'">
+      <div class="page-header">
+        <h1>💰 Paket Harga</h1>
+        <button class="btn btn-primary" x-show="isAdmin" @click="openAddPricing()">+ Tambah Paket</button>
+      </div>
+      <div class="pricing-grid">
+        <template x-for="p in pricing" :key="p.id">
+          <div class="pricing-card">
+            <div class="pricing-label" x-text="p.label"></div>
+            <div class="pricing-price" x-text="formatRp(p.price)"></div>
+            <div class="pricing-type" x-text="p.type === 'open' ? 'Per Jam' : p.type === 'hourly' ? 'Per Jam' : 'Paket'"></div>
+            <div class="pricing-duration" x-show="p.duration_minutes" x-text="(p.duration_minutes/60)+' jam'"></div>
+            <button class="btn btn-sm btn-ghost mt-2" x-show="isAdmin" @click="openEditPricing(p)">Edit</button>
+            <button class="btn btn-sm btn-danger" x-show="isAdmin" @click="deletePricing(p.id)" style="margin-left:5px;">Hapus</button>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- ═══ CASH FLOW ════════════════════════════════════════════════════════ -->
+    <div x-show="page==='cashflow'">
+      <div class="page-header">
+        <h1>💵 Cash Flow</h1>
+        <div class="header-actions">
+          <input type="date" class="input" x-model="cfStartDate" @change="loadCashflow()" />
+          <input type="date" class="input" x-model="cfEndDate" @change="loadCashflow()" />
+          <button class="btn btn-success" x-show="isAdmin" @click="exportCashflow()">📊 Export Excel</button>
+          <button class="btn btn-danger-outline" x-show="isAdmin" @click="openAddExpense()">+ Pengeluaran</button>
+        </div>
+      </div>
+      <div class="stats-grid mb-4">
+        <div class="stat-card stat-green">
+          <div class="stat-label">Pemasukan</div>
+          <div class="stat-value" x-text="formatRp(cfSummary.income || 0)"></div>
+        </div>
+        <div class="stat-card stat-red">
+          <div class="stat-label">Pengeluaran</div>
+          <div class="stat-value" x-text="formatRp(cfSummary.expense || 0)"></div>
+        </div>
+        <div class="stat-card" :class="(cfSummary.net||0) >= 0 ? 'stat-blue' : 'stat-red'">
+          <div class="stat-label">Nett</div>
+          <div class="stat-value" x-text="formatRp(cfSummary.net || 0)"></div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr><th>Waktu</th><th>Tipe</th><th>Kategori</th><th>Keterangan</th><th>Nominal</th></tr>
+          </thead>
+          <tbody>
+            <template x-for="cf in cashflows" :key="cf.id">
+              <tr>
+                <td x-text="formatTime(cf.created_at)"></td>
+                <td><span class="badge" :class="cf.type==='income'?'badge-green':'badge-red'" x-text="cf.type==='income'?'Masuk':'Keluar'"></span></td>
+                <td x-text="cf.category"></td>
+                <td x-text="cf.description"></td>
+                <td :class="cf.type==='income'?'text-green':'text-red'" x-text="(cf.type==='income'?'+':'-')+formatRp(cf.amount)"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══ HISTORY ════════════════════════════════════════════════════════ -->
+    <div x-show="page==='history'">
+      <div class="page-header">
+        <h1>📋 Riwayat Sesi</h1>
+        <div class="header-actions">
+          <input type="date" class="input" x-model="histStartDate" @change="loadHistory()" />
+          <input type="date" class="input" x-model="histEndDate" @change="loadHistory()" />
+          <button class="btn btn-success" x-show="isAdmin" @click="exportHistory()">📊 Export Excel</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr><th>Station</th><th>Customer</th><th>Paket</th><th>Mulai</th><th>Selesai</th><th>Durasi</th><th>Total</th></tr>
+          </thead>
+          <tbody>
+            <template x-for="h in history" :key="h.id">
+              <tr>
+                <td x-text="h.station_name"></td>
+                <td x-text="h.customer_name || 'Guest'"></td>
+                <td x-text="h.pricing_label"></td>
+                <td x-text="formatTime(h.start_time)"></td>
+                <td x-text="formatTime(h.end_time)"></td>
+                <td x-text="h.duration_minutes+' mnt'"></td>
+                <td class="text-green" x-text="formatRp(h.total_price)"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ═══ MODALS ═══════════════════════════════════════════════════════════════ -->
+
+<!-- Modal Start Billing -->
+<div class="modal-overlay" x-show="modal==='start'" x-transition @click.self="modal=''">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>▶ Mulai Sesi</h3>
+      <button @click="modal=''" class="modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Station</label>
+        <input class="input" :value="selectedStation?.name" readonly />
+      </div>
+      <div class="form-group">
+        <label>Nama Customer (opsional)</label>
+        <input class="input" x-model="form.customer_name" placeholder="Guest" />
+      </div>
+      <div class="form-group">
+        <label>Pilih Paket</label>
+        <div class="pricing-select-grid">
+          <template x-for="p in pricing" :key="p.id">
+            <div class="pricing-option" :class="{selected: form.pricing_id===p.id}" @click="form.pricing_id=p.id">
+              <div class="po-label" x-text="p.label"></div>
+              <div class="po-price" x-text="formatRp(p.price)"></div>
+            </div>
+          </template>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Catatan</label>
+        <input class="input" x-model="form.notes" placeholder="Catatan..." />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" @click="modal=''">Batal</button>
+      <button class="btn btn-primary" @click="startBilling()" :disabled="!form.pricing_id">▶ Mulai</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Stop Billing -->
+<div class="modal-overlay" x-show="modal==='stop'" x-transition @click.self="modal=''">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>⏹ Stop & Bayar</h3>
+      <button @click="modal=''" class="modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="bill-summary" x-show="billResult">
+        <div class="bill-row"><span>Station</span><span x-text="selectedStation?.name"></span></div>
+        <div class="bill-row"><span>Customer</span><span x-text="selectedStation?.customer_name || 'Guest'"></span></div>
+        <div class="bill-row"><span>Paket</span><span x-text="selectedStation?.pricing_label"></span></div>
+        <div class="bill-row"><span>Durasi</span><span x-text="(billResult?.duration_minutes||0)+' menit'"></span></div>
+        <div class="bill-row"><span>Biaya Sewa</span><span x-text="formatRp(billResult?.billing_price||0)"></span></div>
+        <div class="bill-row"><span>Biaya Produk</span><span x-text="formatRp(billResult?.order_total||0)"></span></div>
+        <div class="bill-row total"><span>TOTAL</span><span x-text="formatRp(billResult?.grand_total||0)"></span></div>
+      </div>
+      <div x-show="!billResult" class="text-center py-4">
+        <p>Stop sesi untuk <b x-text="selectedStation?.name"></b>?</p>
+        <p class="text-muted">Customer: <span x-text="selectedStation?.customer_name || 'Guest'"></span></p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" @click="modal=''">Batal</button>
+      <button class="btn btn-danger" @click="stopBilling()" x-show="!billResult">⏹ Hitung Tagihan</button>
+      <button class="btn btn-primary" @click="modal=''; loadStations(); loadDashboard();" x-show="billResult">✓ Selesai</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Add Order -->
+<div class="modal-overlay" x-show="modal==='order'" x-transition @click.self="modal=''">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>🛍️ Order Produk</h3>
+      <button @click="modal=''" class="modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="mb-3">Station: <b x-text="selectedStation?.name"></b></p>
+      <div class="product-order-grid">
+        <template x-for="p in products" :key="p.id">
+          <div class="product-order-card">
+            <div class="po-name" x-text="p.name"></div>
+            <div class="po-price" x-text="formatRp(p.price)"></div>
+            <div class="po-stock">Stok: <span x-text="p.stock"></span></div>
+            <div class="po-qty-ctrl">
+              <button class="qty-btn" @click="decreaseQty(p)">-</button>
+              <span x-text="orderCart[p.id]||0"></span>
+              <button class="qty-btn" @click="increaseQty(p)" :disabled="(orderCart[p.id]||0)>=p.stock">+</button>
+            </div>
+          </div>
+        </template>
+      </div>
+      <div class="order-total" x-show="getOrderTotal()>0">
+        Total: <b x-text="formatRp(getOrderTotal())"></b>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" @click="modal=''">Batal</button>
+      <button class="btn btn-primary" @click="submitOrder()" :disabled="getOrderTotal()===0">✓ Order</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Add Station -->
+<div class="modal-overlay" x-show="modal==='addStation'" x-transition @click.self="modal=''">
+  <div class="modal">
+    <div class="modal-header"><h3>+ Tambah Station</h3><button @click="modal=''" class="modal-close">✕</button></div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Nama Station</label>
+        <input class="input" x-model="form.name" placeholder="PS4 - Unit 6" />
+      </div>
+      <div class="form-group">
+        <label>Tipe</label>
+        <select class="input" x-model="form.type">
+          <option>PS4</option><option>PS5</option><option>PC</option><option>Nintendo</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" @click="modal=''">Batal</button>
+      <button class="btn btn-primary" @click="addStation()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Add Product -->
+<div class="modal-overlay" x-show="modal==='addProduct'" x-transition @click.self="modal=''">
+  <div class="modal">
+    <div class="modal-header"><h3 x-text="form.id ? 'Edit Produk' : '+ Tambah Produk'"></h3><button @click="modal=''" class="modal-close">✕</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Nama</label><input class="input" x-model="form.name" /></div>
+      <div class="form-group"><label>Harga (Rp)</label><input class="input" type="number" x-model="form.price" /></div>
+      <div class="form-group"><label>Stok</label><input class="input" type="number" x-model="form.stock" /></div>
+      <div class="form-group">
+        <label>Kategori</label>
+        <select class="input" x-model="form.category">
+          <option value="food">Makanan</option>
+          <option value="drink">Minuman</option>
+          <option value="snack">Snack</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" @click="modal=''">Batal</button>
+      <button class="btn btn-primary" @click="saveProduct()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Add Pricing -->
+<div class="modal-overlay" x-show="modal==='addPricing'" x-transition @click.self="modal=''">
+  <div class="modal">
+    <div class="modal-header"><h3 x-text="form.id ? 'Edit Paket' : '+ Tambah Paket'"></h3><button @click="modal=''" class="modal-close">✕</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Label</label><input class="input" x-model="form.label" placeholder="2 Jam" /></div>
+      <div class="form-group"><label>Harga (Rp)</label><input class="input" type="number" x-model="form.price" /></div>
+      <div class="form-group">
+        <label>Tipe</label>
+        <select class="input" x-model="form.type">
+          <option value="hourly">Per Jam</option>
+          <option value="package">Paket Tetap</option>
+          <option value="open">Open (per jam, bebas)</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Durasi (menit, kosongkan jika open)</label><input class="input" type="number" x-model="form.duration_minutes" /></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" @click="modal=''">Batal</button>
+      <button class="btn btn-primary" @click="savePricing()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Add Expense -->
+<div class="modal-overlay" x-show="modal==='expense'" x-transition @click.self="modal=''">
+  <div class="modal">
+    <div class="modal-header"><h3>+ Pengeluaran</h3><button @click="modal=''" class="modal-close">✕</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Jumlah (Rp)</label><input class="input" type="number" x-model="form.amount" /></div>
+      <div class="form-group"><label>Keterangan</label><input class="input" x-model="form.description" /></div>
+      <div class="form-group">
+        <label>Kategori</label>
+        <select class="input" x-model="form.category">
+          <option value="operational">Operasional</option>
+          <option value="supply">Pembelian Stok</option>
+          <option value="maintenance">Maintenance</option>
+          <option value="other">Lainnya</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" @click="modal=''">Batal</button>
+      <button class="btn btn-danger" @click="saveExpense()">Catat Pengeluaran</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" x-show="toast.show" x-transition :class="'toast-'+toast.type" x-text="toast.msg"></div>
+
+<script src="/js/app.js"></script>
+</body>
+</html>

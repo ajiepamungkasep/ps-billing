@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+bun.lockb
+
+# Database files (local development only)
+# Uncomment jika mau push database ke repo
+ps_billing.db
+ps_billing.db-*
+*.db
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Build outputs
+dist/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.temp
