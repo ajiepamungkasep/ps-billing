@@ -1,7 +1,7 @@
 // src/routes/billing.ts
 import { Hono } from "hono";
 import db from "../db/database";
-import { readJsonBody, toPositiveInteger } from "../utils";
+import { parseSqliteDateTime, readJsonBody, toPositiveInteger } from "../utils";
 
 const billing = new Hono();
 
@@ -59,9 +59,12 @@ billing.post("/stop/:session_id", async (c) => {
   if (!session) return c.json({ success: false, error: "Session tidak ditemukan atau sudah selesai" }, 404);
 
   const now = new Date();
-  const start = new Date(session.start_time);
+  const start = parseSqliteDateTime(session.start_time);
+  if (!start) {
+    return c.json({ success: false, error: "Waktu mulai sesi tidak valid" }, 500);
+  }
   const diffMs = now.getTime() - start.getTime();
-  const diffMinutes = Math.ceil(diffMs / 60000);
+  const diffMinutes = Math.max(1, Math.ceil(diffMs / 60000));
 
   // Hitung total billing
   let billingTotal = 0;

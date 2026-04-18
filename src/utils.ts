@@ -33,3 +33,25 @@ export function toPositiveInteger(value: unknown): number | null {
 
   return numeric;
 }
+
+export function parseSqliteDateTime(value: unknown): Date | null {
+  if (!value) return null;
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  // SQLite DATETIME default: "YYYY-MM-DD HH:MM:SS" (UTC tanpa suffix timezone)
+  // Ubah menjadi ISO UTC agar tidak salah offset timezone saat diparse JS.
+  const normalized = value.includes("T") ? value : value.replace(" ", "T");
+  const withTimezone = /([zZ]|[+-]\d{2}:\d{2})$/.test(normalized)
+    ? normalized
+    : `${normalized}Z`;
+
+  const date = new Date(withTimezone);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
