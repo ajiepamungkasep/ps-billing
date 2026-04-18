@@ -121,7 +121,10 @@
     <div x-show="page==='stations'">
       <div class="page-header">
         <h1>🕹️ Stations</h1>
-        <button class="btn btn-primary" @click="openAddStation()">+ Tambah Station</button>
+        <div class="header-actions">
+          <button class="btn btn-ghost" @click="page='dashboard'; loadDashboard()">← Kembali ke Dashboard</button>
+          <button class="btn btn-primary" @click="openAddStation()">+ Tambah Station</button>
+        </div>
       </div>
       <div class="stations-grid">
         <template x-for="s in stations" :key="s.id">

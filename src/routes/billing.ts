@@ -65,10 +65,7 @@ billing.post("/stop/:session_id", async (c) => {
 
   // Hitung total billing
   let billingTotal = 0;
-  if (session.custom_duration_minutes && session.pricing_type !== "open") {
-    const packageHours = Math.ceil(session.custom_duration_minutes / 60);
-    billingTotal = packageHours * session.price;
-  } else if (session.pricing_type === "open") {
+  if (session.pricing_type === "open") {
     // Per jam, hitung durasi aktual
     const hours = Math.ceil(diffMinutes / 60);
     billingTotal = hours * session.price;
