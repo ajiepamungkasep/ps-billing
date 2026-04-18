@@ -480,20 +480,31 @@ function app() {
     },
 
     async addStation() {
+      if (!this.form.name?.trim()) {
+        this.showToast('Nama station wajib diisi', 'error');
+        return;
+      }
       const r = await this.api('/stations', {
         method: 'POST',
-        body: JSON.stringify({ name: this.form.name, type: this.form.type })
+        body: JSON.stringify({ name: this.form.name.trim(), type: this.form.type })
       });
       if (r.success) {
         this.showToast('✅ Station ditambahkan');
         this.modal = '';
         this.loadStations();
+      } else {
+        this.showToast(r.error || 'Gagal menambah station', 'error');
       }
     },
 
     async setMaintenance(id, isMaintenace) {
       const station = this.stations.find(s => s.id === id);
-      await this.api('/stations/' + id, {
+      if (!station) {
+        this.showToast('Data station tidak ditemukan', 'error');
+        return;
+      }
+
+      const r = await this.api('/stations/' + id, {
         method: 'PUT',
         body: JSON.stringify({
           name: station.name,
@@ -501,7 +512,12 @@ function app() {
           status: isMaintenace ? 'maintenance' : 'available'
         })
       });
-      this.loadStations();
+      if (r.success) {
+        this.showToast('✅ Perubahan station disimpan');
+        this.loadStations();
+      } else {
+        this.showToast(r.error || 'Gagal menyimpan perubahan station', 'error');
+      }
     },
 
     async deleteStation(id) {
