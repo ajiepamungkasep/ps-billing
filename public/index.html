@@ -360,13 +360,24 @@
         <label>Pilih Paket</label>
         <div class="pricing-select-grid">
           <template x-for="p in pricing" :key="p.id">
-            <div class="pricing-option" :class="{selected: form.pricing_id===p.id}" @click="form.pricing_id=p.id">
+            <div class="pricing-option" :class="{selected: form.pricing_id===p.id && !form.is_custom}" @click="form.pricing_id=p.id; form.is_custom=false; form.custom_hours=1">
               <div class="po-label" x-text="p.label"></div>
               <div class="po-price" x-text="formatRp(p.price)"></div>
             </div>
           </template>
+          <div class="pricing-option" :class="{selected: form.is_custom}" @click="selectCustomPackage()">
+            <div class="po-label">Custom</div>
+            <div class="po-price">Isi jam manual</div>
+          </div>
         </div>
       </div>
+      <div class="form-group" x-show="form.is_custom">
+        <label>Jumlah Jam (Custom)</label>
+        <input class="input" type="number" min="1" step="1" x-model.number="form.custom_hours" placeholder="Contoh: 2" />
+        <small class="text-muted" x-show="getCustomPackageRate() > 0">
+          Estimasi tarif paket: <span x-text="formatRp(getCustomPackageRate() * (form.custom_hours || 1))"></span>
+        </small>
+        </div>
       <div class="form-group">
         <label>Catatan</label>
         <input class="input" x-model="form.notes" placeholder="Catatan..." />

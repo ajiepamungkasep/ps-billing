@@ -175,10 +175,18 @@ function app() {
 
     formatTime(dt) {
       if (!dt) return '-';
-      return new Date(dt).toLocaleString('id-ID', {
+      return this.parseServerDate(dt).toLocaleString('id-ID', {
         day: '2-digit', month: '2-digit',
         hour: '2-digit', minute: '2-digit'
       });
+    },
+
+    parseServerDate(dt) {
+      if (!dt) return new Date();
+      if (typeof dt === 'string' && !dt.endsWith('Z') && !dt.includes('+')) {
+        return new Date(`${dt.replace(' ', 'T')}Z`);
+      }
+      return new Date(dt);
     },
 
     // Format detik ke HH:MM:SS
@@ -257,7 +265,7 @@ function app() {
         if (station.status !== 'in_use' || !station.start_time) return;
 
         const intervalId = setInterval(() => {
-          const elapsed = Math.floor((Date.now() - new Date(station.start_time).getTime()) / 1000);
+          const elapsed = Math.max(0, Math.floor((Date.now() - this.parseServerDate(station.start_time).getTime()) / 1000));
 
           let display = '';
           let isOvertime = false;
@@ -346,20 +354,39 @@ function app() {
       if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
       this.selectedStation = station;
       this.billResult = null;
-      this.form = { customer_name: '', pricing_id: null, notes: '' };
+      this.form = { customer_name: '', pricing_id: null, notes: '', is_custom: false, custom_hours: 1 };
       if (!this.pricing.length) this.loadPricing();
       this.modal = 'start';
     },
 
+    getCustomPackageRate() {
+      const hourly = this.pricing.find(p => p.type === 'hourly') || this.pricing.find(p => p.type === 'open');
+      return Number(hourly?.price || 0);
+    },
+
+    selectCustomPackage() {
+      const customBase = this.pricing.find(p => p.type === 'hourly') || this.pricing.find(p => p.type === 'open') || this.pricing[0];
+      if (!customBase) {
+        this.showToast('Belum ada paket harga untuk custom', 'error');
+        return;
+      }
+      this.form.is_custom = true;
+      this.form.custom_hours = this.form.custom_hours || 1;
+      this.form.pricing_id = customBase.id;
+    },
+
     async startBilling() {
       if (!this.form.pricing_id) return;
+      const customHours = Math.max(1, parseInt(this.form.custom_hours, 10) || 1);
       const r = await this.api('/billing/start', {
         method: 'POST',
         body: JSON.stringify({
           station_id: this.selectedStation.id,
           pricing_id: this.form.pricing_id,
           customer_name: this.form.customer_name,
-          notes: this.form.notes
+          notes: this.form.notes,
+          custom_duration_minutes: this.form.is_custom ? customHours * 60 : null,
+          timerMode: this.form.is_custom ? 'custom' : 'fixed'
         })
       });
       if (r.success) {

@@ -15,7 +15,7 @@ stations.get("/", (c) => {
       sess.start_time,
       sess.pricing_id,
       tp.label as pricing_label,
-      tp.duration_minutes,
+      COALESCE(sess.custom_duration_minutes, tp.duration_minutes) as duration_minutes,
       tp.price as pricing_price,
       tp.type as pricing_type
     FROM stations s

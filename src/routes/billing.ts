@@ -7,15 +7,16 @@ const billing = new Hono();
 
 // POST start billing (mulai sesi)
 billing.post("/start", async (c) => {
-  const body = await readJsonBody<{ station_id?: number; pricing_id?: number; customer_name?: string; notes?: string; timerMode?: string }>(c.req.raw);
+  const body = await readJsonBody<{ station_id?: number; pricing_id?: number; customer_name?: string; notes?: string; timerMode?: string; custom_duration_minutes?: number }>(c.req.raw);
   if (!body.ok) return c.json({ success: false, error: body.error }, 400);
 
-  const { station_id, pricing_id, customer_name, notes, timerMode } = body.data;
+  const { station_id, pricing_id, customer_name, notes, timerMode, custom_duration_minutes } = body.data;
   const safeStationId = toPositiveInteger(station_id);
   const safePricingId = toPositiveInteger(pricing_id);
   if (!safeStationId || !safePricingId) {
     return c.json({ success: false, error: "station_id & pricing_id required" }, 400);
   }
+  const safeCustomDuration = custom_duration_minutes ? toPositiveInteger(custom_duration_minutes) : null;
 
   // Cek station tersedia
   const station = db.query(`SELECT * FROM stations WHERE id=?`).get(safeStationId) as any;
@@ -27,9 +28,9 @@ billing.post("/start", async (c) => {
 
   // Buat session
   const session = db.query(`
-    INSERT INTO sessions (station_id, pricing_id, customer_name, notes)
-    VALUES (?, ?, ?, ?)
-  `).run(safeStationId, safePricingId, customer_name || null, notes || null);
+    INSERT INTO sessions (station_id, pricing_id, customer_name, notes, custom_duration_minutes)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(safeStationId, safePricingId, customer_name || null, notes || null, safeCustomDuration);
 
   // Update status station
   db.query(`UPDATE stations SET status='in_use' WHERE id=?`).run(safeStationId);
@@ -64,7 +65,10 @@ billing.post("/stop/:session_id", async (c) => {
 
   // Hitung total billing
   let billingTotal = 0;
-  if (session.pricing_type === "open") {
+  if (session.custom_duration_minutes && session.pricing_type !== "open") {
+    const packageHours = Math.ceil(session.custom_duration_minutes / 60);
+    billingTotal = packageHours * session.price;
+  } else if (session.pricing_type === "open") {
     // Per jam, hitung durasi aktual
     const hours = Math.ceil(diffMinutes / 60);
     billingTotal = hours * session.price;
@@ -118,7 +122,7 @@ billing.get("/active", (c) => {
       tp.label as pricing_label,
       tp.price as pricing_price,
       tp.type as pricing_type,
-      tp.duration_minutes,
+      COALESCE(s.custom_duration_minutes, tp.duration_minutes) as duration_minutes,
       ROUND((julianday('now') - julianday(s.start_time)) * 24 * 60) as elapsed_minutes
     FROM sessions s
     JOIN stations st ON st.id = s.station_id
