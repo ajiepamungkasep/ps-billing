@@ -170,7 +170,8 @@ body {
 .sq-name { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
 .sq-status { font-size: 12px; margin-bottom: 6px; }
 .sq-customer { font-size: 11px; color: var(--text-muted); }
-.sq-timer { font-size: 11px; color: var(--yellow); margin-bottom: 8px; }
+.sq-paket { font-size: 11px; color: var(--text-muted); margin-bottom: 2px; }
+.sq-timer { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; margin-bottom: 8px; letter-spacing: 1px; }
 .sq-actions { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
 
 /* ── Stations Grid ────────────────────────────────────────────────────── */
@@ -197,7 +198,7 @@ body {
 .sc-type { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 
 .sc-session-info { background: var(--surface2); border-radius: 8px; padding: 10px; margin-bottom: 12px; font-size: 13px; line-height: 1.8; }
-.sc-timer { color: var(--yellow); font-weight: 600; margin-top: 4px; }
+.sc-timer { font-weight: 700; margin-top: 6px; font-size: 16px; font-variant-numeric: tabular-nums; letter-spacing: 1px; }
 
 .sc-actions { margin-bottom: 10px; }
 .sc-footer { text-align: center; }
@@ -486,4 +487,52 @@ body {
 
 [x-transition] {
   transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+/* ── Timer Classes ──────────────────────────────────────────────────────── */
+.timer-normal {
+  color: #3b82f6;
+  font-weight: 700;
+}
+
+.timer-overtime {
+  color: #ef4444;
+  font-weight: 700;
+  animation: pulse-red 1s ease-in-out infinite;
+}
+
+@keyframes pulse-red {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* ── Alarm Banner ───────────────────────────────────────────────────────── */
+.alarm-card {
+  background: #2d1212;
+  border: 1px solid #ef4444;
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #fca5a5;
+  font-size: 13px;
+  min-width: 240px;
+  max-width: 300px;
+  box-shadow: 0 4px 16px rgba(239,68,68,0.3);
+}
+
+.alarm-close {
+  background: transparent;
+  border: none;
+  color: #fca5a5;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0;
+  line-height: 1;
+}
+
+.alarm-close:hover {
+  color: #ffffff;
 }

@@ -30,7 +30,7 @@
       <span class="logo-icon">🎮</span>
       <span class="logo-text">PS Billing</span>
     </div>
-      
+
     <nav class="sidebar-nav">
       <a href="#" class="nav-item" :class="{active: page==='dashboard'}" @click="page='dashboard'">
         <span>📊</span> Dashboard
@@ -104,7 +104,13 @@
               <div class="sq-name" x-text="s.name"></div>
               <div class="sq-status" x-text="s.status === 'in_use' ? '🔴 Dipakai' : s.status === 'maintenance' ? '🟡 Maintenance' : '🟢 Tersedia'"></div>
               <div x-show="s.status==='in_use'" class="sq-customer" x-text="s.customer_name || 'Guest'"></div>
-              <div x-show="s.status==='in_use'" class="sq-timer" x-text="s.pricing_label"></div>
+              <div x-show="s.status==='in_use'" class="sq-paket" x-text="s.pricing_label"></div>
+              <!-- Timer: countdown/countup/overtime -->
+              <div x-show="s.status==='in_use'"
+                   class="sq-timer"
+                   :class="stationTimers[s.id]?.isOvertime ? 'timer-overtime' : 'timer-normal'"
+                   x-text="stationTimers[s.id]?.display || '00:00:00'">
+              </div>
               <div class="sq-actions" x-show="s.status==='available'">
                 <button class="btn btn-sm btn-primary" @click="openStartBilling(s)">▶ Mulai</button>
               </div>
@@ -138,7 +144,11 @@
               <div><b>Customer:</b> <span x-text="s.customer_name || 'Guest'"></span></div>
               <div><b>Paket:</b> <span x-text="s.pricing_label"></span></div>
               <div><b>Mulai:</b> <span x-text="formatTime(s.start_time)"></span></div>
-              <div class="sc-timer" x-text="'⏱ '+getElapsed(s.start_time)"></div>
+              <!-- Timer: countdown untuk paket, countup untuk open, merah saat overtime -->
+              <div class="sc-timer"
+                   :class="stationTimers[s.id]?.isOvertime ? 'timer-overtime' : 'timer-normal'"
+                   x-text="(stationTimers[s.id]?.isOvertime ? '⚠ Overtime ' : '⏱ Sisa ') + (stationTimers[s.id]?.display || '00:00:00')">
+              </div>
             </div>
             <div class="sc-actions">
               <template x-if="s.status==='available'">
@@ -294,6 +304,21 @@
     </div>
 
   </main>
+</div>
+
+<!-- ═══ ALARM BANNER (admin only) ════════════════════════════════════════════ -->
+<div x-show="isAdmin && alarmQueue.length > 0"
+     style="position:fixed; top:20px; right:20px; z-index:9999;">
+  <template x-for="a in alarmQueue" :key="a.station_id">
+    <div class="alarm-card">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <b x-text="'⚠ ' + a.station_name"></b>
+        <button class="alarm-close"
+          @click="alarmQueue = alarmQueue.filter(x => x.station_id !== a.station_id)">✕</button>
+      </div>
+      <span>Waktu habis — sesi dihentikan otomatis</span>
+    </div>
+  </template>
 </div>
 
 <!-- ═══ MODALS ═══════════════════════════════════════════════════════════════ -->

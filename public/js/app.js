@@ -34,6 +34,13 @@ function app() {
     loginPassword: '',
     loginRole: 'admin',
 
+    // Timer & Alarm state
+    stationTimers: {},
+    _timerIntervals: [],
+    alarmQueue: [],
+    alarmPlaying: false,
+    _audioCtx: null,
+
     async login() {
       const r = await fetch('/api/login', {
         method: 'POST',
@@ -48,6 +55,15 @@ function app() {
         console.log('✅ Token saved:', sessionStorage.getItem('ps_admin_token'));
         this.isLoggedIn = true;
         this.isAdmin = r.isAdmin;
+
+        // Init AudioContext di sini (butuh user gesture agar browser izinkan suara)
+        try {
+          this._audioCtx = new AudioContext();
+          this._audioCtx.resume();
+        } catch(e) {
+          console.warn('AudioContext gagal:', e);
+        }
+
         this.showToast(`✅ Login berhasil sebagai ${r.isAdmin ? 'Admin' : 'User'}`);
         await this.setupAfterAuth();
       } else {
@@ -63,31 +79,34 @@ function app() {
       this.loginPassword = '';
       this.page = 'dashboard';
       this.modal = '';
+      // Clear semua timer saat logout
+      this._timerIntervals.forEach(id => clearInterval(id));
+      this._timerIntervals = [];
+      this.stationTimers = {};
+      this.alarmQueue = [];
       this.showToast('✅ Logout berhasil');
       console.log('✅ Logged out, session cleared');
     },
 
-    // Cari dan GANTI fungsi api() bawaan dengan ini:
     async api(path, options = {}) {
       try {
-const token = sessionStorage.getItem('ps_admin_token');
+        const token = sessionStorage.getItem('ps_admin_token');
         const headers = {
           'Content-Type': 'application/json',
           ...(token && { 'Authorization': 'Bearer ' + token }),
           ...options.headers
         };
-        
+
         console.log('API Request:', path, 'Token:', token, 'Headers:', headers);
-        
+
         const res = await fetch('/api' + path, {
           ...options,
           headers
         });
         const data = await res.json();
-        
+
         console.log('API Response:', path, data);
-        
-        // Check untuk auth error
+
         if (!data.success && (data.error?.includes("Akses ditolak") || data.error?.includes("login"))) {
           console.warn('Auth error detected, logging out');
           this.logout();
@@ -108,6 +127,13 @@ const token = sessionStorage.getItem('ps_admin_token');
         this.isLoggedIn = true;
         this.isAdmin = savedIsAdmin === 'true';
         console.log('✅ Session restored:', { isAdmin: this.isAdmin });
+
+        // Init AudioContext juga saat restore session (user sudah pernah login)
+        try {
+          this._audioCtx = new AudioContext();
+          this._audioCtx.resume();
+        } catch(e) {}
+
         await this.setupAfterAuth();
       } else {
         this.isLoggedIn = false;
@@ -116,7 +142,7 @@ const token = sessionStorage.getItem('ps_admin_token');
       }
       this.authChecked = true;
     },
-    
+
     async setupAfterAuth() {
       this.updateClock();
       setInterval(() => this.updateClock(), 1000);
@@ -136,8 +162,6 @@ const token = sessionStorage.getItem('ps_admin_token');
     async init() {
       console.warn('init() deprecated, gunakan checkAuth() atau login()');
     },
-
-      
 
     updateClock() {
       const now = new Date();
@@ -159,20 +183,121 @@ const token = sessionStorage.getItem('ps_admin_token');
       });
     },
 
-    getElapsed(startTime) {
-      if (!startTime) return '';
-      const diff = Math.floor((Date.now() - new Date(startTime).getTime()) / 60000);
-      const h = Math.floor(diff / 60);
-      const m = diff % 60;
-      return h > 0 ? `${h}j ${m}m` : `${m} menit`;
+    // Format detik ke HH:MM:SS
+    fmtTimer(sec) {
+      const s = Math.abs(Math.floor(sec));
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const ss = s % 60;
+      return [h, m, ss].map(v => String(v).padStart(2, '0')).join(':');
     },
 
-    showToast(msg, type = 'success') {
+    showToast(msg, type = 'success', duration = 3000) {
       this.toast = { show: true, msg, type };
-      setTimeout(() => this.toast.show = false, 3000);
+      setTimeout(() => this.toast.show = false, duration);
+    },
+
+    // ── Alarm & Auto-stop ──────────────────────────────────────────────────
+
+    playAlarm() {
+      if (this.alarmPlaying) return;
+      if (!this._audioCtx) return;
+      this.alarmPlaying = true;
+
+      const ctx = this._audioCtx;
+      const beepCount = 5;
+      const beepDuration = 0.15;
+      const beepGap = 0.1;
+
+      for (let i = 0; i < beepCount; i++) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'square';
+        osc.frequency.value = 880;
+        const start = ctx.currentTime + i * (beepDuration + beepGap);
+        gain.gain.setValueAtTime(0.3, start);
+        gain.gain.setValueAtTime(0, start + beepDuration);
+        osc.start(start);
+        osc.stop(start + beepDuration);
+      }
+
+      const totalDuration = beepCount * (beepDuration + beepGap) * 1000;
+      setTimeout(() => { this.alarmPlaying = false; }, totalDuration);
+    },
+
+    triggerAlarm(station) {
+      const already = this.alarmQueue.find(a => a.station_id === station.id);
+      if (!already) {
+        this.alarmQueue.push({ station_id: station.id, station_name: station.name });
+      }
+      this.playAlarm();
+      this.showToast(`⚠ Waktu habis: ${station.name} — segera selesaikan sesi!`, 'error', 8000);
+    },
+
+    async autoStopStation(station) {
+      const r = await this.api('/billing/stop/' + station.session_id, { method: 'POST' });
+      if (r.success) {
+        this.alarmQueue = this.alarmQueue.filter(a => a.station_id !== station.id);
+        this.showToast(`✅ Auto-stop: ${station.name} — sesi selesai otomatis`);
+        await this.loadStations();
+        await this.loadDashboard();
+      } else {
+        this.showToast(`Gagal auto-stop ${station.name}: ` + (r.error || 'Error'), 'error');
+      }
+    },
+
+    // ── Timer System ───────────────────────────────────────────────────────
+
+    startStationTimers(stations) {
+      // Clear interval lama
+      this._timerIntervals.forEach(id => clearInterval(id));
+      this._timerIntervals = [];
+
+      stations.forEach(station => {
+        if (station.status !== 'in_use' || !station.start_time) return;
+
+        const intervalId = setInterval(() => {
+          const elapsed = Math.floor((Date.now() - new Date(station.start_time).getTime()) / 1000);
+
+          let display = '';
+          let isOvertime = false;
+
+          if (station.duration_minutes) {
+            // Paket waktu: countdown
+            const remaining = (station.duration_minutes * 60) - elapsed;
+            if (remaining >= 0) {
+              display = this.fmtTimer(remaining);
+              isOvertime = false;
+            } else {
+              display = '+' + this.fmtTimer(Math.abs(remaining));
+              isOvertime = true;
+            }
+
+            // Trigger alarm & auto-stop sekali saja saat habis
+            if (remaining <= 0 && !station._alarmFired) {
+              station._alarmFired = true;
+              if (this.isAdmin) {
+                this.triggerAlarm(station);
+              }
+              this.autoStopStation(station);
+            }
+          } else {
+            // Main bebas / open: countup
+            display = this.fmtTimer(elapsed);
+            isOvertime = false;
+          }
+
+          this.stationTimers[station.id] = { display, isOvertime };
+        }, 1000);
+
+        this._timerIntervals.push(intervalId);
+      });
     },
 
     // ── Load Data ──────────────────────────────────────────────────────────
+
     async loadDashboard() {
       const r = await this.api('/dashboard/stats');
       if (r.success) this.stats = r.stats;
@@ -180,7 +305,16 @@ const token = sessionStorage.getItem('ps_admin_token');
 
     async loadStations() {
       const r = await this.api('/stations');
-      if (r.success) this.stations = r.data;
+      if (r.success) {
+        // Preserve _alarmFired flag agar tidak re-trigger setiap 30 detik
+        const prev = this.stations;
+        this.stations = r.data.map(s => {
+          const old = prev.find(p => p.id === s.id);
+          if (old?._alarmFired) s._alarmFired = true;
+          return s;
+        });
+        this.startStationTimers(this.stations);
+      }
     },
 
     async loadProducts() {
@@ -209,6 +343,7 @@ const token = sessionStorage.getItem('ps_admin_token');
     },
 
     // ── Billing ────────────────────────────────────────────────────────────
+
     openStartBilling(station) {
       this.selectedStation = station;
       this.billResult = null;
@@ -249,6 +384,8 @@ const token = sessionStorage.getItem('ps_admin_token');
       const r = await this.api('/billing/stop/' + sessionId, { method: 'POST' });
       if (r.success) {
         this.billResult = r;
+        // Hapus dari alarmQueue jika ada
+        this.alarmQueue = this.alarmQueue.filter(a => a.station_id !== this.selectedStation.id);
         this.showToast('✅ Sesi selesai. Total: ' + this.formatRp(r.grand_total));
       } else {
         this.showToast(r.error || 'Gagal stop sesi', 'error');
@@ -256,6 +393,7 @@ const token = sessionStorage.getItem('ps_admin_token');
     },
 
     // ── Orders ─────────────────────────────────────────────────────────────
+
     openAddOrder(station) {
       this.selectedStation = station;
       this.orderCart = {};
@@ -298,6 +436,7 @@ const token = sessionStorage.getItem('ps_admin_token');
     },
 
     // ── Station ────────────────────────────────────────────────────────────
+
     openAddStation() {
       this.form = { name: '', type: 'PS4' };
       this.modal = 'addStation';
@@ -340,6 +479,7 @@ const token = sessionStorage.getItem('ps_admin_token');
     },
 
     // ── Product ────────────────────────────────────────────────────────────
+
     openAddProduct() {
       this.form = { name: '', price: '', stock: 0, category: 'food' };
       this.modal = 'addProduct';
@@ -376,6 +516,7 @@ const token = sessionStorage.getItem('ps_admin_token');
     },
 
     // ── Pricing ────────────────────────────────────────────────────────────
+
     openAddPricing() {
       this.form = { label: '', price: '', type: 'package', duration_minutes: '' };
       this.modal = 'addPricing';
@@ -412,6 +553,7 @@ const token = sessionStorage.getItem('ps_admin_token');
     },
 
     // ── Cash Flow ──────────────────────────────────────────────────────────
+
     openAddExpense() {
       this.form = { amount: '', description: '', category: 'operational' };
       this.modal = 'expense';
@@ -430,6 +572,7 @@ const token = sessionStorage.getItem('ps_admin_token');
     },
 
     // ── Export ─────────────────────────────────────────────────────────────
+
     async downloadFile(filename, data) {
       const url = window.URL.createObjectURL(new Blob([data]));
       const link = document.createElement('a');

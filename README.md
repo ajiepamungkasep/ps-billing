@@ -1,7 +1,4 @@
 # 🎮 PS Billing System
-
-Duplikasi dari PSBillingInstaller, dibangun ulang dengan stack modern yang lebih simpel, cepat, dan ringan.
-
 ## Stack
 
 | Layer | Tech | Kenapa |

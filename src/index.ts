@@ -22,7 +22,7 @@ app.use("/api/*", cors());
 
 const ADMIN_PASSWORD = "admin"; // Ubah password sesuai keinginan
 
-// 1. Endpoint Login
+// 1. Endpoint Login (legacy)
 app.post("/api/login", async (c) => {
   const { password, role } = await c.req.json();
   const isAdmin = role === 'admin' && password === ADMIN_PASSWORD;
@@ -35,51 +35,38 @@ app.post("/api/login", async (c) => {
   return c.json({ success: false, error: "Password atau role salah!" }, 401);
 });
 
-// 2. Middleware Proteksi API
+// 2. Endpoint Admin Login
+app.post("/api/admin/login", async (c) => {
+  const { username, password } = await c.req.json();
+  if (username === 'admin' && password === ADMIN_PASSWORD) {
+    const token = "admin-token-valid";
+    return c.json({ success: true, token });
+  }
+  return c.json({ success: false, error: "Username atau password salah!" }, 401);
+});
+
+// 3. Middleware Proteksi API
 app.use("/api/*", async (c, next) => {
   const method = c.req.method;
   const path = c.req.path;
   const isReadMode = method === "GET";
-  const isLogin = path.includes("/login");
+  const isLogin = path.includes("/login") || path.includes("/admin/login");
   const isExport = path.includes("/export");
   
-  // Skip auth untuk login
-  if (isLogin) {
+  // Skip auth untuk login dan read-only (GET)
+  if (isLogin || isReadMode) {
     await next();
     return;
-  }
-  
-  const authHeader = c.req.header("Authorization") || "";
-  const isAdmin = authHeader === "Bearer admin-token-valid";
-  const isUser = authHeader === "Bearer user-token-valid";
-  
-  console.log(`[AUTH] ${method} ${path} | Auth: ${authHeader || 'none'} | Admin: ${isAdmin}, User: ${isUser}`);
-  
-  // Validasi token
-  if (!isAdmin && !isUser) {
-    console.warn(`[AUTH FAIL] ${path} - No valid token`);
-    return c.json({ success: false, error: "Akses ditolak. Harus login." }, 401);
   }
 
-  // Export hanya untuk admin
-  if (isExport && !isAdmin) {
-    console.warn(`[AUTH FAIL] ${path} - Export hanya admin`);
-    return c.json({ success: false, error: "Akses ditolak. Hanya admin yang bisa export." }, 403);
-  }
-  
-  // GET request boleh untuk user dan admin
-  if (isReadMode) {
+  // Untuk write operations (POST/PUT/DELETE), require admin token
+  const authHeader = c.req.header('Authorization');
+  const token = authHeader?.replace('Bearer ', '');
+  if (token === "admin-token-valid") {
     await next();
-    return;
+  } else {
+    return c.json({ success: false, error: "Akses ditolak - login admin diperlukan" }, 403);
   }
-  
-  // POST/PUT/DELETE hanya admin & billing endpoints khusus user
-  if (!isAdmin && !path.includes("/billing/start") && !path.includes("/billing/end")) {
-    console.warn(`[AUTH FAIL] ${path} - Only admin can modify`);
-    return c.json({ success: false, error: "Akses ditolak. Hanya admin yang bisa edit." }, 403);
-  }
-  
-  await next();
 });
 
 // API Routes

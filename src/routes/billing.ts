@@ -6,7 +6,7 @@ const billing = new Hono();
 
 // POST start billing (mulai sesi)
 billing.post("/start", async (c) => {
-  const { station_id, pricing_id, customer_name, notes } = await c.req.json();
+  const { station_id, pricing_id, customer_name, notes, timerMode } = await c.req.json();
   if (!station_id || !pricing_id) {
     return c.json({ success: false, error: "station_id & pricing_id required" }, 400);
   }
@@ -33,7 +33,8 @@ billing.post("/start", async (c) => {
     session_id: session.lastInsertRowid,
     station: station.name,
     pricing: pricing.label,
-    start_time: new Date().toISOString()
+    start_time: new Date().toISOString(),
+    timerMode: timerMode // Return timerMode for reference
   });
 });
 
