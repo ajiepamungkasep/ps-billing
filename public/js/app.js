@@ -71,6 +71,7 @@ function app() {
         }
 
         this.showToast('✅ Login admin berhasil');
+        await this.loadPricing();
       } else {
         this.showToast(r.error || 'Login gagal', 'error');
       }
@@ -346,6 +347,7 @@ function app() {
       this.selectedStation = station;
       this.billResult = null;
       this.form = { customer_name: '', pricing_id: null, notes: '' };
+      if (!this.pricing.length) this.loadPricing();
       this.modal = 'start';
     },
 
