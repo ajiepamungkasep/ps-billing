@@ -1,32 +1,38 @@
 // src/routes/billing.ts
 import { Hono } from "hono";
 import db from "../db/database";
+import { readJsonBody, toPositiveInteger } from "../utils";
 
 const billing = new Hono();
 
 // POST start billing (mulai sesi)
 billing.post("/start", async (c) => {
-  const { station_id, pricing_id, customer_name, notes, timerMode } = await c.req.json();
-  if (!station_id || !pricing_id) {
+  const body = await readJsonBody<{ station_id?: number; pricing_id?: number; customer_name?: string; notes?: string; timerMode?: string }>(c.req.raw);
+  if (!body.ok) return c.json({ success: false, error: body.error }, 400);
+
+  const { station_id, pricing_id, customer_name, notes, timerMode } = body.data;
+  const safeStationId = toPositiveInteger(station_id);
+  const safePricingId = toPositiveInteger(pricing_id);
+  if (!safeStationId || !safePricingId) {
     return c.json({ success: false, error: "station_id & pricing_id required" }, 400);
   }
 
   // Cek station tersedia
-  const station = db.query(`SELECT * FROM stations WHERE id=?`).get(station_id) as any;
+  const station = db.query(`SELECT * FROM stations WHERE id=?`).get(safeStationId) as any;
   if (!station) return c.json({ success: false, error: "Station tidak ditemukan" }, 404);
   if (station.status === "in_use") return c.json({ success: false, error: "Station sedang dipakai" }, 400);
 
-  const pricing = db.query(`SELECT * FROM timer_pricing WHERE id=?`).get(pricing_id) as any;
+  const pricing = db.query(`SELECT * FROM timer_pricing WHERE id=?`).get(safePricingId) as any;
   if (!pricing) return c.json({ success: false, error: "Paket tidak ditemukan" }, 404);
 
   // Buat session
   const session = db.query(`
     INSERT INTO sessions (station_id, pricing_id, customer_name, notes)
     VALUES (?, ?, ?, ?)
-  `).run(station_id, pricing_id, customer_name || null, notes || null);
+  `).run(safeStationId, safePricingId, customer_name || null, notes || null);
 
   // Update status station
-  db.query(`UPDATE stations SET status='in_use' WHERE id=?`).run(station_id);
+  db.query(`UPDATE stations SET status='in_use' WHERE id=?`).run(safeStationId);
 
   return c.json({
     success: true,
@@ -150,7 +156,7 @@ billing.get("/history", (c) => {
   }
   
   query += ` ORDER BY s.end_time DESC LIMIT ?`;
-  params.push(parseInt(limit));
+  params.push(Math.min(parseInt(limit, 10) || 50, 500));
 
   const rows = db.query(query).all(...params);
   return c.json({ success: true, data: rows });

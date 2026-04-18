@@ -9,22 +9,8 @@
 </head>
 <body>
 
-<!-- Login Screen -->
-<div x-show="authChecked && !isLoggedIn" x-cloak style="display:flex; height:100vh; align-items:center; justify-content:center; background:var(--bg);">
-  <div class="card" style="width:100%; max-width:360px; padding:40px 30px; text-align:center; margin: auto;">
-    <h2 style="margin-bottom:20px; font-size:28px;">🎮 PS Billing</h2>
-    <p style="color:var(--text-muted); margin-bottom:25px; font-size:14px;">Sistem Manajemen Rental PlayStation</p>
-    <select class="input" x-model="loginRole" style="margin-bottom:15px; width:100%; padding:10px;">
-      <option value="admin">👤 Admin</option>
-      <option value="user">👥 User</option>
-    </select>
-    <input type="password" class="input" placeholder="Masukkan Password" x-model="loginPassword" @keyup.enter="login()" style="margin-bottom:20px; width:100%; padding:10px; text-align:center;">
-    <button class="btn btn-primary btn-block" @click="login()" style="width:100%; padding:12px; font-size:16px;">Login</button>
-  </div>
-</div>
-
 <!-- Main App Layout -->
-<div class="layout" x-show="authChecked && isLoggedIn" x-cloak>
+<div class="layout" x-show="authChecked" x-cloak>
   <aside class="sidebar">
     <div class="sidebar-logo">
       <span class="logo-icon">🎮</span>
@@ -35,24 +21,27 @@
       <a href="#" class="nav-item" :class="{active: page==='dashboard'}" @click="page='dashboard'">
         <span>📊</span> Dashboard
       </a>
-      <a href="#" class="nav-item" :class="{active: page==='stations'}" @click="page='stations'; loadStations()">
+      <a href="#" class="nav-item" x-show="isAdmin" :class="{active: page==='stations'}" @click="page='stations'; loadStations()">
         <span>🕹️</span> Stations
       </a>
-      <a href="#" class="nav-item" :class="{active: page==='products'}" @click="page='products'; loadProducts()">
+      <a href="#" class="nav-item" x-show="isAdmin" :class="{active: page==='products'}" @click="page='products'; loadProducts()">
         <span>🛍️</span> Produk
       </a>
-      <a href="#" class="nav-item" :class="{active: page==='pricing'}" @click="page='pricing'; loadPricing()">
+      <a href="#" class="nav-item" x-show="isAdmin" :class="{active: page==='pricing'}" @click="page='pricing'; loadPricing()">
         <span>💰</span> Paket Harga
       </a>
-      <a href="#" class="nav-item" :class="{active: page==='cashflow'}" @click="page='cashflow'; loadCashflow()">
+      <a href="#" class="nav-item" x-show="isAdmin" :class="{active: page==='cashflow'}" @click="page='cashflow'; loadCashflow()">
         <span>💵</span> Cash Flow
       </a>
-      <a href="#" class="nav-item" :class="{active: page==='history'}" @click="page='history'; loadHistory()">
+      <a href="#" class="nav-item" x-show="isAdmin" :class="{active: page==='history'}" @click="page='history'; loadHistory()">
         <span>📋</span> Riwayat
       </a>
       <hr style="border:none; border-top:1px solid var(--border); margin:10px 0;">
-      <a href="#" class="nav-item text-red" @click="logout()">
-        <span>🚪</span> Logout
+      <a href="#" class="nav-item" x-show="!isAdmin" @click="openAdminLogin()">
+        <span>🔐</span> Login as Admin
+      </a>
+      <a href="#" class="nav-item text-red" x-show="isAdmin" @click="logout()">
+        <span>🚪</span> Logout Admin
       </a>
     </nav>
     <div class="sidebar-clock" x-text="clock"></div>
@@ -65,7 +54,11 @@
     <div x-show="page==='dashboard'">
       <div class="page-header">
         <h1>Dashboard</h1>
-        <button class="btn btn-ghost" @click="loadDashboard()">↻ Refresh</button>
+        <div class="header-actions">
+          <span class="badge" :class="isAdmin ? 'badge-green' : 'badge-yellow'" x-text="isAdmin ? 'Admin View' : 'Guest View'"></span>
+          <button class="btn btn-ghost" @click="loadDashboard()">↻ Refresh</button>
+          <button class="btn btn-primary" x-show="!isAdmin" @click="openAdminLogin()">🔐 Login as Admin</button>
+        </div>
       </div>
 
       <!-- Stats Cards -->
@@ -78,15 +71,15 @@
           <div class="stat-label">Sedang Main</div>
           <div class="stat-value" x-text="stats.active_stations || 0"></div>
         </div>
-        <div class="stat-card stat-yellow">
+        <div class="stat-card stat-yellow" x-show="isAdmin">
           <div class="stat-label">Sesi Hari Ini</div>
           <div class="stat-value" x-text="stats.today_sessions || 0"></div>
         </div>
-        <div class="stat-card stat-purple">
+        <div class="stat-card stat-purple" x-show="isAdmin">
           <div class="stat-label">Pendapatan Hari Ini</div>
           <div class="stat-value" x-text="formatRp(stats.today_income || 0)"></div>
         </div>
-        <div class="stat-card stat-orange">
+        <div class="stat-card stat-orange" x-show="isAdmin">
           <div class="stat-label">Pendapatan Bulan Ini</div>
           <div class="stat-value" x-text="formatRp(stats.month_income || 0)"></div>
         </div>
@@ -96,7 +89,7 @@
       <div class="card mt-4">
         <div class="card-header">
           <h2>🕹️ Status Station</h2>
-          <button class="btn btn-sm btn-primary" @click="page='stations'; loadStations()">Kelola →</button>
+          <button class="btn btn-sm btn-primary" x-show="isAdmin" @click="page='stations'; loadStations()">Kelola →</button>
         </div>
         <div class="station-quick-grid">
           <template x-for="s in stations" :key="s.id">
@@ -111,10 +104,10 @@
                    :class="stationTimers[s.id]?.isOvertime ? 'timer-overtime' : 'timer-normal'"
                    x-text="stationTimers[s.id]?.display || '00:00:00'">
               </div>
-              <div class="sq-actions" x-show="s.status==='available'">
+              <div class="sq-actions" x-show="isAdmin && s.status==='available'">
                 <button class="btn btn-sm btn-primary" @click="openStartBilling(s)">▶ Mulai</button>
               </div>
-              <div class="sq-actions" x-show="s.status==='in_use'">
+              <div class="sq-actions" x-show="isAdmin && s.status==='in_use'">
                 <button class="btn btn-sm btn-danger" @click="openStopBilling(s)">⏹ Stop</button>
                 <button class="btn btn-sm btn-ghost" @click="openAddOrder(s)">+ Order</button>
               </div>
@@ -304,6 +297,30 @@
     </div>
 
   </main>
+</div>
+
+<!-- Modal Admin Login -->
+<div class="modal-overlay" x-show="modal==='adminLogin'" x-transition @click.self="modal=''">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-header">
+      <h3>🔐 Login Admin</h3>
+      <button @click="modal=''" class="modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Username</label>
+        <input class="input" x-model="adminLogin.username" placeholder="admin" />
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" class="input" x-model="adminLogin.password" placeholder="Masukkan password admin" @keyup.enter="loginAdmin()" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" @click="modal=''">Batal</button>
+      <button class="btn btn-primary" @click="loginAdmin()">Login</button>
+    </div>
+  </div>
 </div>
 
 <!-- ═══ ALARM BANNER (admin only) ════════════════════════════════════════════ -->

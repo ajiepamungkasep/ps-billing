@@ -1,6 +1,7 @@
 // src/routes/stations.ts
 import { Hono } from "hono";
 import db from "../db/database";
+import { readJsonBody } from "../utils";
 
 const stations = new Hono();
 
@@ -27,7 +28,10 @@ stations.get("/", (c) => {
 
 // POST add station
 stations.post("/", async (c) => {
-  const { name, type } = await c.req.json();
+  const body = await readJsonBody<{ name?: string; type?: string }>(c.req.raw);
+  if (!body.ok) return c.json({ success: false, error: body.error }, 400);
+
+  const { name, type } = body.data;
   if (!name || !type) return c.json({ success: false, error: "name & type required" }, 400);
   
   const result = db.query(`INSERT INTO stations (name, type) VALUES (?, ?)`).run(name, type);
@@ -37,7 +41,11 @@ stations.post("/", async (c) => {
 // PUT update station
 stations.put("/:id", async (c) => {
   const id = c.req.param("id");
-  const { name, type, status } = await c.req.json();
+  const body = await readJsonBody<{ name?: string; type?: string; status?: string }>(c.req.raw);
+  if (!body.ok) return c.json({ success: false, error: body.error }, 400);
+
+  const { name, type, status } = body.data;
+  if (!name || !type || !status) return c.json({ success: false, error: "name, type, status required" }, 400);
   db.query(`UPDATE stations SET name=?, type=?, status=? WHERE id=?`).run(name, type, status, id);
   return c.json({ success: true });
 });

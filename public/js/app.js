@@ -29,10 +29,10 @@ function app() {
     histEndDate: new Date().toISOString().split('T')[0],
     authChecked: false,
 
-    isLoggedIn: false,
     isAdmin: false,
-    loginPassword: '',
-    loginRole: 'admin',
+    adminLogin: { username: 'admin', password: '' },
+    _clockInterval: null,
+    _refreshInterval: null,
 
     // Timer & Alarm state
     stationTimers: {},
@@ -41,20 +41,26 @@ function app() {
     alarmPlaying: false,
     _audioCtx: null,
 
-    async login() {
-      const r = await fetch('/api/login', {
+    openAdminLogin() {
+      this.adminLogin = { username: 'admin', password: '' };
+      this.modal = 'adminLogin';
+    },
+
+    async loginAdmin() {
+      const r = await fetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: this.loginPassword, role: this.loginRole })
+        body: JSON.stringify({
+          username: this.adminLogin.username,
+          password: this.adminLogin.password
+        })
       }).then(res => res.json());
 
-      console.log('Login response:', r);
       if (r.success) {
         sessionStorage.setItem('ps_admin_token', r.token);
-        sessionStorage.setItem('ps_is_admin', r.isAdmin ? 'true' : 'false');
-        console.log('✅ Token saved:', sessionStorage.getItem('ps_admin_token'));
-        this.isLoggedIn = true;
-        this.isAdmin = r.isAdmin;
+        sessionStorage.setItem('ps_is_admin', 'true');
+        this.isAdmin = true;
+        this.modal = '';
 
         // Init AudioContext di sini (butuh user gesture agar browser izinkan suara)
         try {
@@ -64,8 +70,7 @@ function app() {
           console.warn('AudioContext gagal:', e);
         }
 
-        this.showToast(`✅ Login berhasil sebagai ${r.isAdmin ? 'Admin' : 'User'}`);
-        await this.setupAfterAuth();
+        this.showToast('✅ Login admin berhasil');
       } else {
         this.showToast(r.error || 'Login gagal', 'error');
       }
@@ -74,9 +79,7 @@ function app() {
     logout() {
       sessionStorage.removeItem('ps_admin_token');
       sessionStorage.removeItem('ps_is_admin');
-      this.isLoggedIn = false;
       this.isAdmin = false;
-      this.loginPassword = '';
       this.page = 'dashboard';
       this.modal = '';
       // Clear semua timer saat logout
@@ -84,8 +87,9 @@ function app() {
       this._timerIntervals = [];
       this.stationTimers = {};
       this.alarmQueue = [];
-      this.showToast('✅ Logout berhasil');
-      console.log('✅ Logged out, session cleared');
+      this.showToast('✅ Kembali ke guest mode');
+      this.loadDashboard();
+      this.loadStations();
     },
 
     async api(path, options = {}) {
@@ -97,18 +101,14 @@ function app() {
           ...options.headers
         };
 
-        console.log('API Request:', path, 'Token:', token, 'Headers:', headers);
-
         const res = await fetch('/api' + path, {
           ...options,
           headers
         });
         const data = await res.json();
 
-        console.log('API Response:', path, data);
-
         if (!data.success && (data.error?.includes("Akses ditolak") || data.error?.includes("login"))) {
-          console.warn('Auth error detected, logging out');
+          this.showToast('Sesi admin berakhir, kembali ke guest mode', 'error');
           this.logout();
         }
         return data;
@@ -123,35 +123,32 @@ function app() {
       const savedToken = sessionStorage.getItem('ps_admin_token');
       const savedIsAdmin = sessionStorage.getItem('ps_is_admin');
 
-      if (savedToken) {
-        this.isLoggedIn = true;
-        this.isAdmin = savedIsAdmin === 'true';
-        console.log('✅ Session restored:', { isAdmin: this.isAdmin });
+      if (savedToken && savedIsAdmin === 'true') {
+        this.isAdmin = true;
 
         // Init AudioContext juga saat restore session (user sudah pernah login)
         try {
           this._audioCtx = new AudioContext();
           this._audioCtx.resume();
         } catch(e) {}
-
-        await this.setupAfterAuth();
       } else {
-        this.isLoggedIn = false;
         this.isAdmin = false;
-        console.log('❌ No session, show login page');
       }
+      await this.setupAfterAuth();
       this.authChecked = true;
     },
 
     async setupAfterAuth() {
       this.updateClock();
-      setInterval(() => this.updateClock(), 1000);
+      if (!this._clockInterval) {
+        this._clockInterval = setInterval(() => this.updateClock(), 1000);
+      }
 
       await this.loadDashboard();
       await this.loadStations();
-      await this.loadPricing();
+      if (this.isAdmin) await this.loadPricing();
 
-      setInterval(() => {
+      if (!this._refreshInterval) this._refreshInterval = setInterval(() => {
         if (this.page === 'dashboard' || this.page === 'stations') {
           this.loadStations();
           if (this.page === 'dashboard') this.loadDashboard();
@@ -160,7 +157,7 @@ function app() {
     },
 
     async init() {
-      console.warn('init() deprecated, gunakan checkAuth() atau login()');
+      console.warn('init() deprecated, gunakan checkAuth()');
     },
 
     updateClock() {
@@ -345,6 +342,7 @@ function app() {
     // ── Billing ────────────────────────────────────────────────────────────
 
     openStartBilling(station) {
+      if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
       this.selectedStation = station;
       this.billResult = null;
       this.form = { customer_name: '', pricing_id: null, notes: '' };
@@ -373,6 +371,7 @@ function app() {
     },
 
     openStopBilling(station) {
+      if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
       this.selectedStation = station;
       this.billResult = null;
       this.modal = 'stop';
@@ -395,6 +394,7 @@ function app() {
     // ── Orders ─────────────────────────────────────────────────────────────
 
     openAddOrder(station) {
+      if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
       this.selectedStation = station;
       this.orderCart = {};
       if (this.products.length === 0) this.loadProducts();
@@ -438,6 +438,7 @@ function app() {
     // ── Station ────────────────────────────────────────────────────────────
 
     openAddStation() {
+      if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
       this.form = { name: '', type: 'PS4' };
       this.modal = 'addStation';
     },
@@ -481,11 +482,13 @@ function app() {
     // ── Product ────────────────────────────────────────────────────────────
 
     openAddProduct() {
+      if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
       this.form = { name: '', price: '', stock: 0, category: 'food' };
       this.modal = 'addProduct';
     },
 
     openEditProduct(p) {
+      if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
       this.form = { ...p };
       this.modal = 'addProduct';
     },
@@ -518,11 +521,13 @@ function app() {
     // ── Pricing ────────────────────────────────────────────────────────────
 
     openAddPricing() {
+      if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
       this.form = { label: '', price: '', type: 'package', duration_minutes: '' };
       this.modal = 'addPricing';
     },
 
     openEditPricing(p) {
+      if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
       this.form = { ...p };
       this.modal = 'addPricing';
     },
@@ -555,6 +560,7 @@ function app() {
     // ── Cash Flow ──────────────────────────────────────────────────────────
 
     openAddExpense() {
+      if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
       this.form = { amount: '', description: '', category: 'operational' };
       this.modal = 'expense';
     },
