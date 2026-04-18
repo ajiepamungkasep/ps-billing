@@ -52,9 +52,44 @@ stations.put("/:id", async (c) => {
 
 // DELETE station
 stations.delete("/:id", (c) => {
-  const id = c.req.param("id");
-  db.query(`DELETE FROM stations WHERE id=?`).run(id);
-  return c.json({ success: true });
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id) || id <= 0) {
+    return c.json({ success: false, error: "ID station tidak valid" }, 400);
+  }
+
+  try {
+    const activeSession = db
+      .query(`SELECT id FROM sessions WHERE station_id = ? AND status = 'active' LIMIT 1`)
+      .get(id) as { id: number } | null;
+
+    if (activeSession) {
+      return c.json(
+        { success: false, error: "Station masih dipakai (sesi aktif), hentikan dulu sebelum menghapus" },
+        400
+      );
+    }
+
+    const station = db.query(`SELECT id FROM stations WHERE id = ?`).get(id) as { id: number } | null;
+    if (!station) {
+      return c.json({ success: false, error: "Station tidak ditemukan" }, 404);
+    }
+
+    const tx = db.transaction((stationId: number) => {
+      db.query(`DELETE FROM orders WHERE station_id = ?`).run(stationId);
+      db.query(`DELETE FROM sessions WHERE station_id = ?`).run(stationId);
+      return db.query(`DELETE FROM stations WHERE id = ?`).run(stationId);
+    });
+
+    const result = tx(id);
+    if (!result.changes) {
+      return c.json({ success: false, error: "Station gagal dihapus" }, 500);
+    }
+
+    return c.json({ success: true });
+  } catch (e: any) {
+    console.error("[Delete Station Error]", e?.message || e);
+    return c.json({ success: false, error: "Gagal menghapus station" }, 500);
+  }
 });
 
 export default stations;
