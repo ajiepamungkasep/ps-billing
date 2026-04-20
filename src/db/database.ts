@@ -2,8 +2,13 @@
 // SQLite via Bun's built-in driver (zero dependencies needed)
 
 import { Database } from "bun:sqlite";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 
-const db = new Database("ps_billing.db", { create: true });
+const DB_PATH = process.env.DATABASE_PATH || "ps_billing.db";
+mkdirSync(dirname(DB_PATH), { recursive: true });
+
+const db = new Database(DB_PATH, { create: true });
 
 // Enable WAL mode for better concurrent performance
 db.exec("PRAGMA journal_mode = WAL;");
@@ -47,6 +52,7 @@ export function initDB() {
       station_id INTEGER NOT NULL REFERENCES stations(id),
       customer_name TEXT,
       pricing_id INTEGER REFERENCES timer_pricing(id),
+      custom_duration_minutes INTEGER,
       start_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       end_time DATETIME,
       duration_minutes INTEGER,
@@ -99,6 +105,12 @@ export function initDB() {
       (4, 'Chiki',         3000, 60, 'snack'),
       (5, 'Teh Botol',     5000, 30, 'drink');
   `);
+
+  const sessionColumns = db.query(`PRAGMA table_info(sessions)`).all() as { name: string }[];
+  const hasCustomDurationColumn = sessionColumns.some((column) => column.name === "custom_duration_minutes");
+  if (!hasCustomDurationColumn) {
+    db.exec(`ALTER TABLE sessions ADD COLUMN custom_duration_minutes INTEGER;`);
+  }
 
   console.log("✅ Database initialized");
 }

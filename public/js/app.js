@@ -29,10 +29,10 @@ function app() {
     histEndDate: new Date().toISOString().split('T')[0],
     authChecked: false,
 
-    isLoggedIn: false,
     isAdmin: false,
-    loginPassword: '',
-    loginRole: 'admin',
+    adminLogin: { username: 'admin', password: '' },
+    _clockInterval: null,
+    _refreshInterval: null,
 
     // Timer & Alarm state
     stationTimers: {},
@@ -41,20 +41,26 @@ function app() {
     alarmPlaying: false,
     _audioCtx: null,
 
-    async login() {
-      const r = await fetch('/api/login', {
+    openAdminLogin() {
+      this.adminLogin = { username: 'admin', password: '' };
+      this.modal = 'adminLogin';
+    },
+
+    async loginAdmin() {
+      const r = await fetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: this.loginPassword, role: this.loginRole })
+        body: JSON.stringify({
+          username: this.adminLogin.username,
+          password: this.adminLogin.password
+        })
       }).then(res => res.json());
 
-      console.log('Login response:', r);
       if (r.success) {
         sessionStorage.setItem('ps_admin_token', r.token);
-        sessionStorage.setItem('ps_is_admin', r.isAdmin ? 'true' : 'false');
-        console.log('✅ Token saved:', sessionStorage.getItem('ps_admin_token'));
-        this.isLoggedIn = true;
-        this.isAdmin = r.isAdmin;
+        sessionStorage.setItem('ps_is_admin', 'true');
+        this.isAdmin = true;
+        this.modal = '';
 
         // Init AudioContext di sini (butuh user gesture agar browser izinkan suara)
         try {
@@ -64,8 +70,8 @@ function app() {
           console.warn('AudioContext gagal:', e);
         }
 
-        this.showToast(`✅ Login berhasil sebagai ${r.isAdmin ? 'Admin' : 'User'}`);
-        await this.setupAfterAuth();
+        this.showToast('✅ Login admin berhasil');
+        await this.loadPricing();
       } else {
         this.showToast(r.error || 'Login gagal', 'error');
       }
@@ -74,9 +80,7 @@ function app() {
     logout() {
       sessionStorage.removeItem('ps_admin_token');
       sessionStorage.removeItem('ps_is_admin');
-      this.isLoggedIn = false;
       this.isAdmin = false;
-      this.loginPassword = '';
       this.page = 'dashboard';
       this.modal = '';
       // Clear semua timer saat logout
@@ -84,8 +88,9 @@ function app() {
       this._timerIntervals = [];
       this.stationTimers = {};
       this.alarmQueue = [];
-      this.showToast('✅ Logout berhasil');
-      console.log('✅ Logged out, session cleared');
+      this.showToast('✅ Kembali ke guest mode');
+      this.loadDashboard();
+      this.loadStations();
     },
 
     async api(path, options = {}) {
@@ -97,18 +102,14 @@ function app() {
           ...options.headers
         };
 
-        console.log('API Request:', path, 'Token:', token, 'Headers:', headers);
-
         const res = await fetch('/api' + path, {
           ...options,
           headers
         });
         const data = await res.json();
 
-        console.log('API Response:', path, data);
-
         if (!data.success && (data.error?.includes("Akses ditolak") || data.error?.includes("login"))) {
-          console.warn('Auth error detected, logging out');
+          this.showToast('Sesi admin berakhir, kembali ke guest mode', 'error');
           this.logout();
         }
         return data;
@@ -123,35 +124,32 @@ function app() {
       const savedToken = sessionStorage.getItem('ps_admin_token');
       const savedIsAdmin = sessionStorage.getItem('ps_is_admin');
 
-      if (savedToken) {
-        this.isLoggedIn = true;
-        this.isAdmin = savedIsAdmin === 'true';
-        console.log('✅ Session restored:', { isAdmin: this.isAdmin });
+      if (savedToken && savedIsAdmin === 'true') {
+        this.isAdmin = true;
 
         // Init AudioContext juga saat restore session (user sudah pernah login)
         try {
           this._audioCtx = new AudioContext();
           this._audioCtx.resume();
         } catch(e) {}
-
-        await this.setupAfterAuth();
       } else {
-        this.isLoggedIn = false;
         this.isAdmin = false;
-        console.log('❌ No session, show login page');
       }
+      await this.setupAfterAuth();
       this.authChecked = true;
     },
 
     async setupAfterAuth() {
       this.updateClock();
-      setInterval(() => this.updateClock(), 1000);
+      if (!this._clockInterval) {
+        this._clockInterval = setInterval(() => this.updateClock(), 1000);
+      }
 
       await this.loadDashboard();
       await this.loadStations();
-      await this.loadPricing();
+      if (this.isAdmin) await this.loadPricing();
 
-      setInterval(() => {
+      if (!this._refreshInterval) this._refreshInterval = setInterval(() => {
         if (this.page === 'dashboard' || this.page === 'stations') {
           this.loadStations();
           if (this.page === 'dashboard') this.loadDashboard();
@@ -160,7 +158,7 @@ function app() {
     },
 
     async init() {
-      console.warn('init() deprecated, gunakan checkAuth() atau login()');
+      console.warn('init() deprecated, gunakan checkAuth()');
     },
 
     updateClock() {
@@ -175,12 +173,27 @@ function app() {
       return 'Rp ' + Number(n).toLocaleString('id-ID');
     },
 
+    formatDurationMinutes(durationMinutes) {
+      const minutes = Number(durationMinutes || 0);
+      if (!minutes) return '-';
+      if (minutes % 60 === 0) return `${minutes / 60} jam`;
+      return `${minutes} menit`;
+    },
+
     formatTime(dt) {
       if (!dt) return '-';
-      return new Date(dt).toLocaleString('id-ID', {
+      return this.parseServerDate(dt).toLocaleString('id-ID', {
         day: '2-digit', month: '2-digit',
         hour: '2-digit', minute: '2-digit'
       });
+    },
+
+    parseServerDate(dt) {
+      if (!dt) return new Date();
+      if (typeof dt === 'string' && !dt.endsWith('Z') && !dt.includes('+')) {
+        return new Date(`${dt.replace(' ', 'T')}Z`);
+      }
+      return new Date(dt);
     },
 
     // Format detik ke HH:MM:SS
@@ -259,7 +272,7 @@ function app() {
         if (station.status !== 'in_use' || !station.start_time) return;
 
         const intervalId = setInterval(() => {
-          const elapsed = Math.floor((Date.now() - new Date(station.start_time).getTime()) / 1000);
+          const elapsed = Math.max(0, Math.floor((Date.now() - this.parseServerDate(station.start_time).getTime()) / 1000));
 
           let display = '';
           let isOvertime = false;
@@ -345,21 +358,42 @@ function app() {
     // ── Billing ────────────────────────────────────────────────────────────
 
     openStartBilling(station) {
+      if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
       this.selectedStation = station;
       this.billResult = null;
-      this.form = { customer_name: '', pricing_id: null, notes: '' };
+      this.form = { customer_name: '', pricing_id: null, notes: '', is_custom: false, custom_hours: 1 };
+      if (!this.pricing.length) this.loadPricing();
       this.modal = 'start';
+    },
+
+    getCustomPackageRate() {
+      const hourly = this.pricing.find(p => p.type === 'hourly') || this.pricing.find(p => p.type === 'open');
+      return Number(hourly?.price || 0);
+    },
+
+    selectCustomPackage() {
+      const customBase = this.pricing.find(p => p.type === 'hourly') || this.pricing.find(p => p.type === 'open') || this.pricing[0];
+      if (!customBase) {
+        this.showToast('Belum ada paket harga untuk custom', 'error');
+        return;
+      }
+      this.form.is_custom = true;
+      this.form.custom_hours = this.form.custom_hours || 1;
+      this.form.pricing_id = customBase.id;
     },
 
     async startBilling() {
       if (!this.form.pricing_id) return;
+      const customHours = Math.max(1, parseInt(this.form.custom_hours, 10) || 1);
       const r = await this.api('/billing/start', {
         method: 'POST',
         body: JSON.stringify({
           station_id: this.selectedStation.id,
           pricing_id: this.form.pricing_id,
           customer_name: this.form.customer_name,
-          notes: this.form.notes
+          notes: this.form.notes,
+          custom_duration_minutes: this.form.is_custom ? customHours * 60 : null,
+          timerMode: this.form.is_custom ? 'custom' : 'fixed'
         })
       });
       if (r.success) {
@@ -373,6 +407,7 @@ function app() {
     },
 
     openStopBilling(station) {
+      if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
       this.selectedStation = station;
       this.billResult = null;
       this.modal = 'stop';
@@ -395,6 +430,7 @@ function app() {
     // ── Orders ─────────────────────────────────────────────────────────────
 
     openAddOrder(station) {
+      if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
       this.selectedStation = station;
       this.orderCart = {};
       if (this.products.length === 0) this.loadProducts();
@@ -438,25 +474,37 @@ function app() {
     // ── Station ────────────────────────────────────────────────────────────
 
     openAddStation() {
+      if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
       this.form = { name: '', type: 'PS4' };
       this.modal = 'addStation';
     },
 
     async addStation() {
+      if (!this.form.name?.trim()) {
+        this.showToast('Nama station wajib diisi', 'error');
+        return;
+      }
       const r = await this.api('/stations', {
         method: 'POST',
-        body: JSON.stringify({ name: this.form.name, type: this.form.type })
+        body: JSON.stringify({ name: this.form.name.trim(), type: this.form.type })
       });
       if (r.success) {
         this.showToast('✅ Station ditambahkan');
         this.modal = '';
         this.loadStations();
+      } else {
+        this.showToast(r.error || 'Gagal menambah station', 'error');
       }
     },
 
     async setMaintenance(id, isMaintenace) {
       const station = this.stations.find(s => s.id === id);
-      await this.api('/stations/' + id, {
+      if (!station) {
+        this.showToast('Data station tidak ditemukan', 'error');
+        return;
+      }
+
+      const r = await this.api('/stations/' + id, {
         method: 'PUT',
         body: JSON.stringify({
           name: station.name,
@@ -464,7 +512,12 @@ function app() {
           status: isMaintenace ? 'maintenance' : 'available'
         })
       });
-      this.loadStations();
+      if (r.success) {
+        this.showToast('✅ Perubahan station disimpan');
+        this.loadStations();
+      } else {
+        this.showToast(r.error || 'Gagal menyimpan perubahan station', 'error');
+      }
     },
 
     async deleteStation(id) {
@@ -481,11 +534,13 @@ function app() {
     // ── Product ────────────────────────────────────────────────────────────
 
     openAddProduct() {
+      if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
       this.form = { name: '', price: '', stock: 0, category: 'food' };
       this.modal = 'addProduct';
     },
 
     openEditProduct(p) {
+      if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
       this.form = { ...p };
       this.modal = 'addProduct';
     },
@@ -518,26 +573,49 @@ function app() {
     // ── Pricing ────────────────────────────────────────────────────────────
 
     openAddPricing() {
-      this.form = { label: '', price: '', type: 'package', duration_minutes: '' };
+      if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
+      this.form = { label: '', price: '', type: 'package', duration_value: '', duration_unit: 'hours' };
       this.modal = 'addPricing';
     },
 
     openEditPricing(p) {
-      this.form = { ...p };
+      if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
+      const minutes = Number(p.duration_minutes || 0);
+      const isHourUnit = minutes > 0 && minutes % 60 === 0;
+      this.form = {
+        ...p,
+        duration_value: minutes ? (isHourUnit ? minutes / 60 : minutes) : '',
+        duration_unit: isHourUnit ? 'hours' : 'minutes'
+      };
       this.modal = 'addPricing';
     },
 
     async savePricing() {
       const method = this.form.id ? 'PUT' : 'POST';
       const path = this.form.id ? `/pricing/${this.form.id}` : '/pricing';
+      const durationRaw = Number(this.form.duration_value || 0);
+      const durationMinutes = this.form.type === 'open'
+        ? null
+        : (this.form.duration_unit === 'hours' ? durationRaw * 60 : durationRaw);
+      if (this.form.type !== 'open' && durationMinutes <= 0) {
+        this.showToast('Durasi paket harus lebih dari 0', 'error');
+        return;
+      }
+
+      const payload = {
+        ...this.form,
+        duration_minutes: this.form.type === 'open' ? null : durationMinutes
+      };
       const r = await this.api(path, {
         method,
-        body: JSON.stringify(this.form)
+        body: JSON.stringify(payload)
       });
       if (r.success) {
         this.showToast('✅ Paket disimpan');
         this.modal = '';
         this.loadPricing();
+      } else {
+        this.showToast(r.error || 'Gagal simpan paket', 'error');
       }
     },
 
@@ -555,6 +633,7 @@ function app() {
     // ── Cash Flow ──────────────────────────────────────────────────────────
 
     openAddExpense() {
+      if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
       this.form = { amount: '', description: '', category: 'operational' };
       this.modal = 'expense';
     },

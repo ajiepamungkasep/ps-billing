@@ -32,9 +32,31 @@ curl -fsSL https://bun.sh/install | bash
 bun install
 bun run dev      # development (hot reload)
 bun run start    # production
+bun run typecheck
 ```
 
 Akses di: http://localhost:3000
+
+### Konfigurasi Auth via Environment Variable (opsional)
+
+Default lama tetap didukung, tapi disarankan override lewat env:
+
+- `ADMIN_PASSWORD` (default: `admin`)
+- `USER_PASSWORD` (default: `user`)
+- `ADMIN_TOKEN` (default: `admin-token-valid`)
+- `USER_TOKEN` (default: `user-token-valid`)
+
+### Konfigurasi Database Path (penting untuk production)
+
+- `DATABASE_PATH` (default: `ps_billing.db`)
+
+Contoh:
+```bash
+DATABASE_PATH=/data/ps_billing.db bun run start
+```
+
+> Untuk Railway/hosting container lain, arahkan `DATABASE_PATH` ke folder **persistent volume**  
+> agar data sessions/cashflow/history tidak hilang saat redeploy.
 
 ### Build binary (opsional)
 ```bash

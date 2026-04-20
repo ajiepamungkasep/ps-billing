@@ -1,6 +1,7 @@
 // src/routes/products.ts
 import { Hono } from "hono";
 import db from "../db/database";
+import { readJsonBody, toNonNegativeInteger, toPositiveInteger, toPositiveNumber } from "../utils";
 
 const products = new Hono();
 
@@ -12,18 +13,29 @@ products.get("/", (c) => {
 
 // POST add product
 products.post("/", async (c) => {
-  const { name, price, stock, category } = await c.req.json();
-  if (!name || !price) return c.json({ success: false, error: "name & price required" }, 400);
-  const result = db.query(`INSERT INTO products (name, price, stock, category) VALUES (?,?,?,?)`).run(name, price, stock || 0, category || "food");
+  const body = await readJsonBody<{ name?: string; price?: number; stock?: number; category?: string }>(c.req.raw);
+  if (!body.ok) return c.json({ success: false, error: body.error }, 400);
+
+  const { name, price, stock, category } = body.data;
+  const safePrice = toPositiveNumber(price);
+  const safeStock = stock === undefined ? 0 : toNonNegativeInteger(stock);
+  if (!name || !safePrice || safeStock === null) return c.json({ success: false, error: "name, price > 0, stock >= 0 required" }, 400);
+  const result = db.query(`INSERT INTO products (name, price, stock, category) VALUES (?,?,?,?)`).run(name, safePrice, safeStock, category || "food");
   return c.json({ success: true, id: result.lastInsertRowid });
 });
 
 // PUT update product
 products.put("/:id", async (c) => {
   const id = c.req.param("id");
-  const { name, price, stock, category, active } = await c.req.json();
+  const body = await readJsonBody<{ name?: string; price?: number; stock?: number; category?: string; active?: number }>(c.req.raw);
+  if (!body.ok) return c.json({ success: false, error: body.error }, 400);
+
+  const { name, price, stock, category, active } = body.data;
+  const safePrice = toPositiveNumber(price);
+  const safeStock = toNonNegativeInteger(stock);
+  if (!name || !safePrice || safeStock === null) return c.json({ success: false, error: "name, price > 0, stock >= 0 required" }, 400);
   db.query(`UPDATE products SET name=?, price=?, stock=?, category=?, active=? WHERE id=?`)
-    .run(name, price, stock, category, active ?? 1, id);
+    .run(name, safePrice, safeStock, category || "food", active ?? 1, id);
   return c.json({ success: true });
 });
 
@@ -53,22 +65,27 @@ orders.get("/session/:session_id", (c) => {
 
 // POST add order (beli produk)
 orders.post("/", async (c) => {
-  const { session_id, station_id, product_id, quantity } = await c.req.json();
-  if (!product_id || !quantity) return c.json({ success: false, error: "product_id & quantity required" }, 400);
+  const body = await readJsonBody<{ session_id?: number; station_id?: number; product_id?: number; quantity?: number }>(c.req.raw);
+  if (!body.ok) return c.json({ success: false, error: body.error }, 400);
 
-  const product = db.query(`SELECT * FROM products WHERE id=? AND active=1`).get(product_id) as any;
+  const { session_id, station_id, product_id, quantity } = body.data;
+  const safeProductId = toPositiveInteger(product_id);
+  const safeQuantity = toPositiveInteger(quantity);
+  if (!safeProductId || !safeQuantity) return c.json({ success: false, error: "product_id & quantity required" }, 400);
+
+  const product = db.query(`SELECT * FROM products WHERE id=? AND active=1`).get(safeProductId) as any;
   if (!product) return c.json({ success: false, error: "Produk tidak ditemukan" }, 404);
-  if (product.stock < quantity) return c.json({ success: false, error: "Stok tidak cukup" }, 400);
+  if (product.stock < safeQuantity) return c.json({ success: false, error: "Stok tidak cukup" }, 400);
 
-  const subtotal = product.price * quantity;
+  const subtotal = product.price * safeQuantity;
 
   const result = db.query(`
     INSERT INTO orders (session_id, station_id, product_id, quantity, unit_price, subtotal)
     VALUES (?,?,?,?,?,?)
-  `).run(session_id || null, station_id || null, product_id, quantity, product.price, subtotal);
+  `).run(session_id || null, station_id || null, safeProductId, safeQuantity, product.price, subtotal);
 
   // Kurangi stok
-  db.query(`UPDATE products SET stock = stock - ? WHERE id=?`).run(quantity, product_id);
+  db.query(`UPDATE products SET stock = stock - ? WHERE id=?`).run(safeQuantity, safeProductId);
 
   // Catat cash flow jika tidak dalam sesi (beli langsung)
   if (!session_id) {
@@ -89,17 +106,26 @@ timerPricing.get("/", (c) => {
 });
 
 timerPricing.post("/", async (c) => {
-  const { label, duration_minutes, price, type } = await c.req.json();
-  if (!label || !price) return c.json({ success: false, error: "label & price required" }, 400);
-  const result = db.query(`INSERT INTO timer_pricing (label, duration_minutes, price, type) VALUES (?,?,?,?)`).run(label, duration_minutes || null, price, type || "hourly");
+  const body = await readJsonBody<{ label?: string; duration_minutes?: number; price?: number; type?: string }>(c.req.raw);
+  if (!body.ok) return c.json({ success: false, error: body.error }, 400);
+
+  const { label, duration_minutes, price, type } = body.data;
+  const safePrice = toPositiveNumber(price);
+  if (!label || !safePrice) return c.json({ success: false, error: "label & price required" }, 400);
+  const result = db.query(`INSERT INTO timer_pricing (label, duration_minutes, price, type) VALUES (?,?,?,?)`).run(label, duration_minutes || null, safePrice, type || "hourly");
   return c.json({ success: true, id: result.lastInsertRowid });
 });
 
 timerPricing.put("/:id", async (c) => {
   const id = c.req.param("id");
-  const { label, duration_minutes, price, type, active } = await c.req.json();
+  const body = await readJsonBody<{ label?: string; duration_minutes?: number; price?: number; type?: string; active?: number }>(c.req.raw);
+  if (!body.ok) return c.json({ success: false, error: body.error }, 400);
+
+  const { label, duration_minutes, price, type, active } = body.data;
+  const safePrice = toPositiveNumber(price);
+  if (!label || !safePrice) return c.json({ success: false, error: "label & price required" }, 400);
   db.query(`UPDATE timer_pricing SET label=?, duration_minutes=?, price=?, type=?, active=? WHERE id=?`)
-    .run(label, duration_minutes || null, price, type, active ?? 1, id);
+    .run(label, duration_minutes || null, safePrice, type || "hourly", active ?? 1, id);
   return c.json({ success: true });
 });
 
@@ -165,10 +191,14 @@ cashFlow.get("/", (c) => {
 
 // POST manual expense (pengeluaran)
 cashFlow.post("/expense", async (c) => {
-  const { amount, description, category } = await c.req.json();
-  if (!amount || !description) return c.json({ success: false, error: "amount & description required" }, 400);
+  const body = await readJsonBody<{ amount?: number; description?: string; category?: string }>(c.req.raw);
+  if (!body.ok) return c.json({ success: false, error: body.error }, 400);
+
+  const { amount, description, category } = body.data;
+  const safeAmount = toPositiveNumber(amount);
+  if (!safeAmount || !description) return c.json({ success: false, error: "amount & description required" }, 400);
   db.query(`INSERT INTO cash_flow (type, category, amount, description) VALUES ('expense',?,?,?)`)
-    .run(category || "operational", amount, description);
+    .run(category || "operational", safeAmount, description);
   return c.json({ success: true });
 });
 

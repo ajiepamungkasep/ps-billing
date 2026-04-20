@@ -1,6 +1,7 @@
 // src/routes/stations.ts
 import { Hono } from "hono";
 import db from "../db/database";
+import { readJsonBody } from "../utils";
 
 const stations = new Hono();
 
@@ -14,7 +15,7 @@ stations.get("/", (c) => {
       sess.start_time,
       sess.pricing_id,
       tp.label as pricing_label,
-      tp.duration_minutes,
+      COALESCE(sess.custom_duration_minutes, tp.duration_minutes) as duration_minutes,
       tp.price as pricing_price,
       tp.type as pricing_type
     FROM stations s
@@ -27,7 +28,10 @@ stations.get("/", (c) => {
 
 // POST add station
 stations.post("/", async (c) => {
-  const { name, type } = await c.req.json();
+  const body = await readJsonBody<{ name?: string; type?: string }>(c.req.raw);
+  if (!body.ok) return c.json({ success: false, error: body.error }, 400);
+
+  const { name, type } = body.data;
   if (!name || !type) return c.json({ success: false, error: "name & type required" }, 400);
   
   const result = db.query(`INSERT INTO stations (name, type) VALUES (?, ?)`).run(name, type);
@@ -37,16 +41,55 @@ stations.post("/", async (c) => {
 // PUT update station
 stations.put("/:id", async (c) => {
   const id = c.req.param("id");
-  const { name, type, status } = await c.req.json();
+  const body = await readJsonBody<{ name?: string; type?: string; status?: string }>(c.req.raw);
+  if (!body.ok) return c.json({ success: false, error: body.error }, 400);
+
+  const { name, type, status } = body.data;
+  if (!name || !type || !status) return c.json({ success: false, error: "name, type, status required" }, 400);
   db.query(`UPDATE stations SET name=?, type=?, status=? WHERE id=?`).run(name, type, status, id);
   return c.json({ success: true });
 });
 
 // DELETE station
 stations.delete("/:id", (c) => {
-  const id = c.req.param("id");
-  db.query(`DELETE FROM stations WHERE id=?`).run(id);
-  return c.json({ success: true });
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id) || id <= 0) {
+    return c.json({ success: false, error: "ID station tidak valid" }, 400);
+  }
+
+  try {
+    const activeSession = db
+      .query(`SELECT id FROM sessions WHERE station_id = ? AND status = 'active' LIMIT 1`)
+      .get(id) as { id: number } | null;
+
+    if (activeSession) {
+      return c.json(
+        { success: false, error: "Station masih dipakai (sesi aktif), hentikan dulu sebelum menghapus" },
+        400
+      );
+    }
+
+    const station = db.query(`SELECT id FROM stations WHERE id = ?`).get(id) as { id: number } | null;
+    if (!station) {
+      return c.json({ success: false, error: "Station tidak ditemukan" }, 404);
+    }
+
+    const tx = db.transaction((stationId: number) => {
+      db.query(`DELETE FROM orders WHERE station_id = ?`).run(stationId);
+      db.query(`DELETE FROM sessions WHERE station_id = ?`).run(stationId);
+      return db.query(`DELETE FROM stations WHERE id = ?`).run(stationId);
+    });
+
+    const result = tx(id);
+    if (!result.changes) {
+      return c.json({ success: false, error: "Station gagal dihapus" }, 500);
+    }
+
+    return c.json({ success: true });
+  } catch (e: any) {
+    console.error("[Delete Station Error]", e?.message || e);
+    return c.json({ success: false, error: "Gagal menghapus station" }, 500);
+  }
 });
 
 export default stations;

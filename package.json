@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "bun run --hot src/index.ts",
     "start": "bun run src/index.ts",
-    "build": "bun build src/index.ts --compile --outfile ps-billing"
+    "build": "bun build src/index.ts --compile --outfile ps-billing",
+    "typecheck": "bunx tsc --noEmit"
   },
   "dependencies": {
     "hono": "^4.4.0",

@@ -8,6 +8,7 @@ import { initDB } from "./db/database";
 import stations from "./routes/stations";
 import billing from "./routes/billing";
 import products, { orders, timerPricing, cashFlow, dashboard } from "./routes/products";
+import { readJsonBody } from "./utils";
 
 // Init database
 initDB();
@@ -20,16 +21,24 @@ app.use("/api/*", cors());
 
 // Tambahkan baris ini setelah app.use("/api/*", cors());
 
-const ADMIN_PASSWORD = "admin"; // Ubah password sesuai keinginan
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin";
+const USER_PASSWORD = process.env.USER_PASSWORD || "user";
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "admin-token-valid";
+const USER_TOKEN = process.env.USER_TOKEN || "user-token-valid";
 
 // 1. Endpoint Login (legacy)
 app.post("/api/login", async (c) => {
-  const { password, role } = await c.req.json();
-  const isAdmin = role === 'admin' && password === ADMIN_PASSWORD;
-  const isUser = role === 'user' && password === 'user'; // Simple user password
-  
+  const body = await readJsonBody<{ password?: string; role?: string }>(c.req.raw);
+  if (!body.ok) {
+    return c.json({ success: false, error: body.error }, 400);
+  }
+
+  const { password, role } = body.data;
+  const isAdmin = role === "admin" && password === ADMIN_PASSWORD;
+  const isUser = role === "user" && password === USER_PASSWORD;
+
   if (isAdmin || isUser) {
-    const token = isAdmin ? "admin-token-valid" : "user-token-valid";
+    const token = isAdmin ? ADMIN_TOKEN : USER_TOKEN;
     return c.json({ success: true, token, isAdmin });
   }
   return c.json({ success: false, error: "Password atau role salah!" }, 401);
@@ -37,10 +46,14 @@ app.post("/api/login", async (c) => {
 
 // 2. Endpoint Admin Login
 app.post("/api/admin/login", async (c) => {
-  const { username, password } = await c.req.json();
-  if (username === 'admin' && password === ADMIN_PASSWORD) {
-    const token = "admin-token-valid";
-    return c.json({ success: true, token });
+  const body = await readJsonBody<{ username?: string; password?: string }>(c.req.raw);
+  if (!body.ok) {
+    return c.json({ success: false, error: body.error }, 400);
+  }
+
+  const { username, password } = body.data;
+  if (username === "admin" && password === ADMIN_PASSWORD) {
+    return c.json({ success: true, token: ADMIN_TOKEN });
   }
   return c.json({ success: false, error: "Username atau password salah!" }, 401);
 });
@@ -51,7 +64,6 @@ app.use("/api/*", async (c, next) => {
   const path = c.req.path;
   const isReadMode = method === "GET";
   const isLogin = path.includes("/login") || path.includes("/admin/login");
-  const isExport = path.includes("/export");
   
   // Skip auth untuk login dan read-only (GET)
   if (isLogin || isReadMode) {
@@ -62,7 +74,7 @@ app.use("/api/*", async (c, next) => {
   // Untuk write operations (POST/PUT/DELETE), require admin token
   const authHeader = c.req.header('Authorization');
   const token = authHeader?.replace('Bearer ', '');
-  if (token === "admin-token-valid") {
+  if (token === ADMIN_TOKEN) {
     await next();
   } else {
     return c.json({ success: false, error: "Akses ditolak - login admin diperlukan" }, 403);
