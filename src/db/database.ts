@@ -2,11 +2,14 @@
 // SQLite via Bun's built-in driver (zero dependencies needed)
 
 import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 const DB_PATH = process.env.DATABASE_PATH || "ps_billing.db";
-mkdirSync(dirname(DB_PATH), { recursive: true });
+const dbDir = dirname(DB_PATH);
+if (dbDir && dbDir !== "." && !existsSync(dbDir)) {
+  mkdirSync(dbDir, { recursive: true });
+}
 
 const db = new Database(DB_PATH, { create: true });
 
