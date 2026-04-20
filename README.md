@@ -90,13 +90,13 @@ ps-billing/
 | POST | /api/cashflow/expense | Catat pengeluaran |
 | GET | /api/dashboard/stats | Statistik dashboard |
 
-## Perbandingan vs Original
+## Architecture
 
-| | Original (PHP) | Baru (Hono + Bun) |
+| (Hono + Bun) |
 |---|---|---|
-| Server | Apache + PHP engine | Bun (built-in) |
-| Database | MySQL server | SQLite file |
-| Frontend | Vanilla JS | Alpine.js (reaktif) |
-| Setup | XAMPP/WAMP | `bun install && bun run start` |
-| RAM Usage | ~150MB | ~30MB |
-| Binary | PSBillingInstaller.exe | Single binary via `bun build` |
+| Server | Bun (built-in) |
+| Database | SQLite file |
+| Frontend | Alpine.js (reaktif) |
+| Setup | `bun install && bun run start` |
+| RAM Usage | ~30MB |
+| Binary | Single binary via `bun build` |
