@@ -109,3 +109,5 @@ export async function createApp() {
 
   return app;
 }
+
+export default createApp;
