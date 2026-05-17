@@ -2,11 +2,11 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import * as XLSX from "xlsx";
-import { initDB } from "./db/database";
-import stations from "./routes/stations";
-import billing from "./routes/billing";
-import products, { orders, timerPricing, cashFlow, dashboard } from "./routes/products";
-import { readJsonBody } from "./utils";
+import { initDB } from "./db/database.js";
+import stations from "./routes/stations.js";
+import billing from "./routes/billing.js";
+import products, { orders, timerPricing, cashFlow, dashboard } from "./routes/products.js";
+import { readJsonBody } from "./utils.js";
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin";
 const USER_PASSWORD = process.env.USER_PASSWORD || "user";
@@ -20,11 +20,22 @@ async function ensureDbInitialized() {
 }
 
 export async function createApp() {
-  await ensureDbInitialized();
-
   const app = new Hono();
   app.use("*", logger());
   app.use("/api/*", cors());
+
+
+  app.use("/api/*", async (c, next) => {
+    if (c.req.path === "/api/health") return next();
+
+    try {
+      await ensureDbInitialized();
+      return next();
+    } catch (error) {
+      console.error("Database initialization failed", error);
+      return c.json({ success: false, error: "Database unavailable" }, 503);
+    }
+  });
 
   app.post("/api/login", async (c) => {
     const body = await readJsonBody<{ password?: string; role?: string }>(c.req.raw);
@@ -64,7 +75,7 @@ export async function createApp() {
   app.get("/api/health", (c) => c.json({ status: "ok", app: "PS Billing", version: "1.0.0" }));
 
   app.get("/api/export/stations", async () => {
-    const db = (await import("./db/database")).default;
+    const db = (await import("./db/database.js")).default;
     const rows = await db.query("SELECT * FROM stations").all();
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -74,7 +85,7 @@ export async function createApp() {
   });
 
   app.get("/api/export/cashflow", async (c) => {
-    const db = (await import("./db/database")).default;
+    const db = (await import("./db/database.js")).default;
     const start = c.req.query("start");
     const end = c.req.query("end");
     const params: any[] = [];
@@ -91,7 +102,7 @@ export async function createApp() {
   });
 
   app.get("/api/export/history", async (c) => {
-    const db = (await import("./db/database")).default;
+    const db = (await import("./db/database.js")).default;
     const start = c.req.query("start");
     const end = c.req.query("end");
     const params: any[] = [];
@@ -109,3 +120,5 @@ export async function createApp() {
 
   return app;
 }
+
+export default createApp;
