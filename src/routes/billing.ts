@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import db from "../db/database";
-import { parseSqliteDateTime, readJsonBody, toPositiveInteger } from "../utils";
+import db from "../db/database.js";
+import { parseSqliteDateTime, readJsonBody, toPositiveInteger } from "../utils.js";
 
 const billing = new Hono();
 

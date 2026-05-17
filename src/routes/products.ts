@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import db from "../db/database";
-import { readJsonBody, toNonNegativeInteger, toPositiveInteger, toPositiveNumber } from "../utils";
+import db from "../db/database.js";
+import { readJsonBody, toNonNegativeInteger, toPositiveInteger, toPositiveNumber } from "../utils.js";
 
 const products = new Hono();
 
