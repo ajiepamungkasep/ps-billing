@@ -102,15 +102,33 @@ function app() {
           ...options.headers
         };
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        const timeoutMs = options.timeoutMs ?? 25000;
+        const attemptFetch = async () => {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+          try {
+            return await fetch('/api' + path, {
+              ...options,
+              headers,
+              signal: controller.signal
+            });
+          } finally {
+            clearTimeout(timeoutId);
+          }
+        };
 
-        const res = await fetch('/api' + path, {
-          ...options,
-          headers,
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
+        let res;
+        try {
+          res = await attemptFetch();
+        } catch (err) {
+          const isAbort = err?.name === 'AbortError';
+          const canRetry = (options.method || 'GET').toUpperCase() === 'GET';
+          if (isAbort && canRetry) {
+            res = await attemptFetch();
+          } else {
+            throw err;
+          }
+        }
 
         const data = await res.json();
 
