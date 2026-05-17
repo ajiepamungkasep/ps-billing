@@ -131,11 +131,15 @@ function app() {
         }
 
         const data = await res.json();
+        const errorMessage = typeof data?.error === 'string'
+          ? data.error
+          : (data?.error?.message || data?.message || '');
 
-        if (!data.success && (data.error?.includes("Akses ditolak") || data.error?.includes("login"))) {
+        if (!data.success && (errorMessage.includes("Akses ditolak") || errorMessage.includes("login"))) {
           this.showToast('Sesi admin berakhir, kembali ke guest mode', 'error');
           this.logout();
         }
+        if (errorMessage && !data.error) data.error = errorMessage;
         return data;
       } catch (e) {
         console.error('API Error:', e);

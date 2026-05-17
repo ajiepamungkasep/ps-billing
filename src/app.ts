@@ -34,6 +34,16 @@ export async function createApp() {
   const app = new Hono();
   const apiPrefixes = ["/api", ""];
   app.use("*", logger());
+  app.onError((error, c) => {
+    console.error("Unhandled app error", error);
+    return c.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "Internal server error",
+      },
+      500
+    );
+  });
   for (const prefix of apiPrefixes) {
     app.use(`${prefix}/*`, cors());
   }
