@@ -1,8 +1,6 @@
+import { handle } from "hono/vercel";
 import { createApp } from "../src/app.js";
 
-const appPromise = createApp();
+const app = await createApp();
 
-export default async function handler(request: Request): Promise<Response> {
-  const app = await appPromise;
-  return app.fetch(request);
-}
+export default handle(app);
