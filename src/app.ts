@@ -26,11 +26,12 @@ export async function createApp() {
 
 
   app.use("/api/*", async (c, next) => {
-    if (c.req.path === "/api/health") return next();
+    const healthPaths = new Set(["/api/health", "/health"]);
+    if (healthPaths.has(c.req.path)) return await next();
 
     try {
       await ensureDbInitialized();
-      return next();
+      return await next();
     } catch (error) {
       console.error("Database initialization failed", error);
       return c.json({ success: false, error: "Database unavailable" }, 503);
@@ -58,9 +59,9 @@ export async function createApp() {
   app.use("/api/*", async (c, next) => {
     const isReadMode = c.req.method === "GET";
     const isLogin = c.req.path.includes("/login") || c.req.path.includes("/admin/login");
-    if (isLogin || isReadMode) return next();
+    if (isLogin || isReadMode) return await next();
     const token = c.req.header("Authorization")?.replace("Bearer ", "");
-    if (token === ADMIN_TOKEN) return next();
+    if (token === ADMIN_TOKEN) return await next();
     return c.json({ success: false, error: "Akses ditolak - login admin diperlukan" }, 403);
   });
 
