@@ -49,10 +49,10 @@ stations.delete("/:id", async (c) => {
   if (!Number.isInteger(id) || id <= 0) return c.json({ success: false, error: "ID station tidak valid" }, 400);
 
   try {
-    const activeSession = (await db.query(`SELECT id FROM sessions WHERE station_id = ? AND status = 'active' LIMIT 1`).get(id)) as { id: number } | null;
+    const activeSession = (await db.query(`SELECT id FROM sessions WHERE station_id = ? AND status = 'active' LIMIT 1`).get(id)) as unknown as { id: number } | null;
     if (activeSession) return c.json({ success: false, error: "Station masih dipakai (sesi aktif), hentikan dulu sebelum menghapus" }, 400);
 
-    const station = (await db.query(`SELECT id FROM stations WHERE id = ?`).get(id)) as { id: number } | null;
+    const station = (await db.query(`SELECT id FROM stations WHERE id = ?`).get(id)) as unknown as { id: number } | null;
     if (!station) return c.json({ success: false, error: "Station tidak ditemukan" }, 404);
 
     const result = await db.transaction(async () => {
