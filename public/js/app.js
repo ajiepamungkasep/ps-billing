@@ -102,10 +102,16 @@ function app() {
           ...options.headers
         };
 
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
         const res = await fetch('/api' + path, {
           ...options,
-          headers
+          headers,
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
+
         const data = await res.json();
 
         if (!data.success && (data.error?.includes("Akses ditolak") || data.error?.includes("login"))) {
@@ -135,8 +141,13 @@ function app() {
       } else {
         this.isAdmin = false;
       }
-      await this.setupAfterAuth();
       this.authChecked = true;
+      try {
+        await this.setupAfterAuth();
+      } catch (e) {
+        console.error('Setup error:', e);
+        this.showToast('Sebagian data gagal dimuat. Coba refresh.', 'error');
+      }
     },
 
     async setupAfterAuth() {
