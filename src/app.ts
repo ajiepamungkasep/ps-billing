@@ -32,11 +32,14 @@ async function ensureDbInitialized() {
 
 export async function createApp() {
   const app = new Hono();
+  const apiPrefixes = ["/api", ""];
   app.use("*", logger());
-  app.use("/api/*", cors());
+  for (const prefix of apiPrefixes) {
+    app.use(`${prefix}/*`, cors());
+  }
 
 
-  app.use("/api/*", async (c, next) => {
+  for (const prefix of apiPrefixes) app.use(`${prefix}/*`, async (c, next) => {
     const healthPaths = new Set(["/api/health", "/health"]);
     if (healthPaths.has(c.req.path)) return await next();
 
@@ -67,7 +70,7 @@ export async function createApp() {
     return c.json({ success: false, error: "Username atau password salah!" }, 401);
   });
 
-  app.use("/api/*", async (c, next) => {
+  for (const prefix of apiPrefixes) app.use(`${prefix}/*`, async (c, next) => {
     const isReadMode = c.req.method === "GET";
     const isLogin = c.req.path.includes("/login") || c.req.path.includes("/admin/login");
     if (isLogin || isReadMode) return await next();
@@ -76,15 +79,16 @@ export async function createApp() {
     return c.json({ success: false, error: "Akses ditolak - login admin diperlukan" }, 403);
   });
 
-  app.route("/api/stations", stations);
-  app.route("/api/billing", billing);
-  app.route("/api/products", products);
-  app.route("/api/orders", orders);
-  app.route("/api/pricing", timerPricing);
-  app.route("/api/cashflow", cashFlow);
-  app.route("/api/dashboard", dashboard);
-
-  app.get("/api/health", (c) => c.json({ status: "ok", app: "PS Billing", version: "1.0.0" }));
+  for (const prefix of apiPrefixes) {
+    app.route(`${prefix}/stations`, stations);
+    app.route(`${prefix}/billing`, billing);
+    app.route(`${prefix}/products`, products);
+    app.route(`${prefix}/orders`, orders);
+    app.route(`${prefix}/pricing`, timerPricing);
+    app.route(`${prefix}/cashflow`, cashFlow);
+    app.route(`${prefix}/dashboard`, dashboard);
+    app.get(`${prefix}/health`, (c) => c.json({ status: "ok", app: "PS Billing", version: "1.0.0" }));
+  }
 
   app.get("/api/export/stations", async () => {
     const db = (await import("./db/database.js")).default;
