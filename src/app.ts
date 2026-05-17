@@ -20,11 +20,22 @@ async function ensureDbInitialized() {
 }
 
 export async function createApp() {
-  await ensureDbInitialized();
-
   const app = new Hono();
   app.use("*", logger());
   app.use("/api/*", cors());
+
+
+  app.use("/api/*", async (c, next) => {
+    if (c.req.path === "/api/health") return next();
+
+    try {
+      await ensureDbInitialized();
+      return next();
+    } catch (error) {
+      console.error("Database initialization failed", error);
+      return c.json({ success: false, error: "Database unavailable" }, 503);
+    }
+  });
 
   app.post("/api/login", async (c) => {
     const body = await readJsonBody<{ password?: string; role?: string }>(c.req.raw);
