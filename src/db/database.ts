@@ -54,7 +54,8 @@ const db = {
     return new Statement(queryText);
   },
   async transaction<T>(fn: () => Promise<T>): Promise<T> {
-    return sql.begin(async () => fn());
+    const result = await sql.begin(async () => fn());
+    return result as T;
   },
 };
 
