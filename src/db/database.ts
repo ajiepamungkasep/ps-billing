@@ -60,7 +60,22 @@ const db = {
   },
 };
 
+async function verifyDB() {
+  await sql`SELECT 1`;
+  const result = await sql`SELECT to_regclass('public.stations') as stations`;
+  if (!result[0]?.stations) {
+    throw new Error("Required tables are missing. Run supabase/schema.sql before deploying.");
+  }
+}
+
 export async function initDB() {
+  const shouldVerifyOnly = process.env.VERCEL === "1" || process.env.DB_BOOTSTRAP === "verify";
+  if (shouldVerifyOnly) {
+    await verifyDB();
+    console.log("Database connection verified");
+    return;
+  }
+
   await sql`
     CREATE TABLE IF NOT EXISTS stations (
       id BIGSERIAL PRIMARY KEY,

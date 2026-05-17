@@ -59,23 +59,25 @@ export async function createApp() {
     }
   });
 
-  app.post("/api/login", async (c) => {
-    const body = await readJsonBody<{ password?: string; role?: string }>(c.req.raw);
-    if (!body.ok) return c.json({ success: false, error: body.error }, 400);
-    const { password, role } = body.data;
-    const isAdmin = role === "admin" && password === ADMIN_PASSWORD;
-    const isUser = role === "user" && password === USER_PASSWORD;
-    if (isAdmin || isUser) return c.json({ success: true, token: isAdmin ? ADMIN_TOKEN : USER_TOKEN, isAdmin });
-    return c.json({ success: false, error: "Password atau role salah!" }, 401);
-  });
+  for (const prefix of apiPrefixes) {
+    app.post(`${prefix}/login`, async (c) => {
+      const body = await readJsonBody<{ password?: string; role?: string }>(c.req.raw);
+      if (!body.ok) return c.json({ success: false, error: body.error }, 400);
+      const { password, role } = body.data;
+      const isAdmin = role === "admin" && password === ADMIN_PASSWORD;
+      const isUser = role === "user" && password === USER_PASSWORD;
+      if (isAdmin || isUser) return c.json({ success: true, token: isAdmin ? ADMIN_TOKEN : USER_TOKEN, isAdmin });
+      return c.json({ success: false, error: "Password atau role salah!" }, 401);
+    });
 
-  app.post("/api/admin/login", async (c) => {
-    const body = await readJsonBody<{ username?: string; password?: string }>(c.req.raw);
-    if (!body.ok) return c.json({ success: false, error: body.error }, 400);
-    const { username, password } = body.data;
-    if (username === "admin" && password === ADMIN_PASSWORD) return c.json({ success: true, token: ADMIN_TOKEN });
-    return c.json({ success: false, error: "Username atau password salah!" }, 401);
-  });
+    app.post(`${prefix}/admin/login`, async (c) => {
+      const body = await readJsonBody<{ username?: string; password?: string }>(c.req.raw);
+      if (!body.ok) return c.json({ success: false, error: body.error }, 400);
+      const { username, password } = body.data;
+      if (username === "admin" && password === ADMIN_PASSWORD) return c.json({ success: true, token: ADMIN_TOKEN });
+      return c.json({ success: false, error: "Username atau password salah!" }, 401);
+    });
+  }
 
   for (const prefix of apiPrefixes) app.use(`${prefix}/*`, async (c, next) => {
     const isReadMode = c.req.method === "GET";
