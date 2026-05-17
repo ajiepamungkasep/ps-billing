@@ -1,7 +1,7 @@
 // src/routes/stations.ts
 import { Hono } from "hono";
-import db from "../db/database";
-import { readJsonBody } from "../utils";
+import db from "../db/database.js";
+import { readJsonBody } from "../utils.js";
 
 const stations = new Hono();
 

@@ -1,4 +1,4 @@
-import { createApp } from "./app";
+import { createApp } from "./app.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const app = await createApp();
