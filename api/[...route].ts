@@ -1,6 +1,3 @@
-import { handle } from "hono/vercel";
-import { createApp } from "../src/app.js";
+import handler from "./index.js";
 
-const app = await createApp();
-
-export default handle(app);
+export default handler;
