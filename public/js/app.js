@@ -47,14 +47,14 @@ function app() {
     },
 
     async loginAdmin() {
-      const r = await fetch('/api/admin/login', {
+      const r = await this.api('/admin/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        timeoutMs: 30000,
         body: JSON.stringify({
           username: this.adminLogin.username,
           password: this.adminLogin.password
         })
-      }).then(res => res.json());
+      });
 
       if (r.success) {
         sessionStorage.setItem('ps_admin_token', r.token);
@@ -184,10 +184,6 @@ function app() {
           if (this.page === 'dashboard') this.loadDashboard();
         }
       }, 30000);
-    },
-
-    async init() {
-      console.warn('init() deprecated, gunakan checkAuth()');
     },
 
     updateClock() {

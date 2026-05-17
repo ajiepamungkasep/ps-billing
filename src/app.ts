@@ -40,8 +40,15 @@ export async function createApp() {
 
 
   for (const prefix of apiPrefixes) app.use(`${prefix}/*`, async (c, next) => {
-    const healthPaths = new Set(["/api/health", "/health"]);
-    if (healthPaths.has(c.req.path)) return await next();
+    const bypassInitPaths = new Set([
+      "/api/health",
+      "/health",
+      "/api/login",
+      "/login",
+      "/api/admin/login",
+      "/admin/login",
+    ]);
+    if (bypassInitPaths.has(c.req.path)) return await next();
 
     try {
       await ensureDbInitialized();
