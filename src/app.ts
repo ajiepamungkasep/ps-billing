@@ -14,9 +14,20 @@ const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "admin-token-valid";
 const USER_TOKEN = process.env.USER_TOKEN || "user-token-valid";
 
 let initPromise: Promise<void> | null = null;
+const DB_INIT_TIMEOUT_MS = 8000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timeout after ${timeoutMs}ms`)), timeoutMs)
+    ),
+  ]);
+}
+
 async function ensureDbInitialized() {
   if (!initPromise) initPromise = initDB();
-  await initPromise;
+  await withTimeout(initPromise, DB_INIT_TIMEOUT_MS, "DB init");
 }
 
 export async function createApp() {
