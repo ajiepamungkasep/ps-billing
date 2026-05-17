@@ -1,113 +1,199 @@
-// src/db/database.ts
-// SQLite via Bun's built-in driver (zero dependencies needed)
+import postgres from "postgres";
 
-import { Database } from "bun:sqlite";
+const connectionString = process.env.DATABASE_URL;
 
-const db = new Database("ps_billing.db", { create: true });
+if (!connectionString) {
+  throw new Error("DATABASE_URL is required");
+}
 
-// Enable WAL mode for better concurrent performance
-db.exec("PRAGMA journal_mode = WAL;");
-db.exec("PRAGMA foreign_keys = ON;");
+const sql = postgres(connectionString, {
+  max: 5,
+  idle_timeout: 20,
+  connect_timeout: 10,
+  prepare: false,
+});
 
-export function initDB() {
-  db.exec(`
-    -- Stations (unit PS)
+function toPgPlaceholders(query: string) {
+  let idx = 0;
+  return query.replace(/\?/g, () => `$${++idx}`);
+}
+
+export type RunResult = {
+  changes: number;
+  lastInsertRowid?: number;
+};
+
+class Statement {
+  constructor(private readonly queryText: string) {}
+
+  async all(...params: any[]) {
+    const pgQuery = toPgPlaceholders(this.queryText);
+    return sql.unsafe(pgQuery, params);
+  }
+
+  async get(...params: any[]) {
+    const rows = await this.all(...params);
+    return rows[0] ?? null;
+  }
+
+  async run(...params: any[]): Promise<RunResult> {
+    const pgQuery = toPgPlaceholders(this.queryText);
+    const returningId = /\binsert\b/i.test(this.queryText) && !/\breturning\b/i.test(this.queryText);
+    const finalQuery = returningId ? `${pgQuery} RETURNING id` : pgQuery;
+    const rows = await sql.unsafe(finalQuery, params);
+    const firstRow = rows[0] as Record<string, any> | undefined;
+    return {
+      changes: rows.count ?? rows.length,
+      lastInsertRowid: firstRow?.id ? Number(firstRow.id) : undefined,
+    };
+  }
+}
+
+const db = {
+  query(queryText: string) {
+    return new Statement(queryText);
+  },
+  async transaction<T>(fn: () => Promise<T>): Promise<T> {
+    return sql.begin(async () => fn());
+  },
+};
+
+export async function initDB() {
+  await sql`
     CREATE TABLE IF NOT EXISTS stations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id BIGSERIAL PRIMARY KEY,
       name TEXT NOT NULL,
-      type TEXT NOT NULL DEFAULT 'PS4', -- PS4, PS5, PC, etc
-      status TEXT NOT NULL DEFAULT 'available', -- available, in_use, maintenance
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
+      type TEXT NOT NULL DEFAULT 'PS4',
+      status TEXT NOT NULL DEFAULT 'available',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
 
-    -- Products (snack, minuman, dll)
+  await sql`
     CREATE TABLE IF NOT EXISTS products (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id BIGSERIAL PRIMARY KEY,
       name TEXT NOT NULL,
-      price REAL NOT NULL,
+      price NUMERIC NOT NULL,
       stock INTEGER NOT NULL DEFAULT 0,
       category TEXT DEFAULT 'food',
       active INTEGER DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
 
-    -- Timer Pricing (harga per durasi)
+  await sql`
     CREATE TABLE IF NOT EXISTS timer_pricing (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      label TEXT NOT NULL,        -- e.g. "1 Jam", "2 Jam", "Main Bebas"
-      duration_minutes INTEGER,   -- NULL = open/bebas
-      price REAL NOT NULL,
-      type TEXT DEFAULT 'hourly', -- hourly, package, open
-      active INTEGER DEFAULT 1
-    );
-
-    -- Sessions (sesi main aktif)
-    CREATE TABLE IF NOT EXISTS sessions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      station_id INTEGER NOT NULL REFERENCES stations(id),
-      customer_name TEXT,
-      pricing_id INTEGER REFERENCES timer_pricing(id),
-      custom_duration_minutes INTEGER,
-      start_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      end_time DATETIME,
+      id BIGSERIAL PRIMARY KEY,
+      label TEXT NOT NULL,
       duration_minutes INTEGER,
-      total_price REAL DEFAULT 0,
-      status TEXT DEFAULT 'active', -- active, finished, cancelled
+      price NUMERIC NOT NULL,
+      type TEXT DEFAULT 'hourly',
+      active INTEGER DEFAULT 1
+    )
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id BIGSERIAL PRIMARY KEY,
+      station_id BIGINT NOT NULL REFERENCES stations(id),
+      customer_name TEXT,
+      pricing_id BIGINT REFERENCES timer_pricing(id),
+      custom_duration_minutes INTEGER,
+      start_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      end_time TIMESTAMPTZ,
+      duration_minutes INTEGER,
+      total_price NUMERIC DEFAULT 0,
+      status TEXT DEFAULT 'active',
       notes TEXT
-    );
+    )
+  `;
 
-    -- Orders (pesanan produk)
+  await sql`
     CREATE TABLE IF NOT EXISTS orders (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id INTEGER REFERENCES sessions(id),
-      station_id INTEGER REFERENCES stations(id),
-      product_id INTEGER NOT NULL REFERENCES products(id),
+      id BIGSERIAL PRIMARY KEY,
+      session_id BIGINT REFERENCES sessions(id),
+      station_id BIGINT REFERENCES stations(id),
+      product_id BIGINT NOT NULL REFERENCES products(id),
       quantity INTEGER NOT NULL DEFAULT 1,
-      unit_price REAL NOT NULL,
-      subtotal REAL NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
+      unit_price NUMERIC NOT NULL,
+      subtotal NUMERIC NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
 
-    -- Cash Flow (pemasukan/pengeluaran)
+  await sql`
     CREATE TABLE IF NOT EXISTS cash_flow (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      type TEXT NOT NULL, -- income, expense
-      category TEXT,      -- billing, product, operational, etc
-      amount REAL NOT NULL,
+      id BIGSERIAL PRIMARY KEY,
+      type TEXT NOT NULL,
+      category TEXT,
+      amount NUMERIC NOT NULL,
       description TEXT,
-      ref_id INTEGER,     -- session_id or order_id
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
+      ref_id BIGINT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
 
-    -- Seed data jika kosong
-    INSERT OR IGNORE INTO stations (id, name, type, status) VALUES
-      (1, 'PS4 - Unit 1', 'PS4', 'available'),
-      (2, 'PS4 - Unit 2', 'PS4', 'available'),
-      (3, 'PS4 - Unit 3', 'PS4', 'available'),
-      (4, 'PS5 - Unit 1', 'PS5', 'available'),
-      (5, 'PS5 - Unit 2', 'PS5', 'available');
+  await sql`
+    INSERT INTO stations (name, type, status)
+    SELECT 'PS4 - Unit 1', 'PS4', 'available'
+    WHERE NOT EXISTS (SELECT 1 FROM stations)
+  `;
 
-    INSERT OR IGNORE INTO timer_pricing (id, label, duration_minutes, price, type) VALUES
-      (1, '1 Jam',       60,   8000,  'hourly'),
-      (2, '2 Jam',       120,  15000, 'package'),
-      (3, '3 Jam',       180,  20000, 'package'),
-      (4, 'Main Bebas',  NULL, 6000,  'open');
+  await sql`
+    INSERT INTO stations (name, type, status)
+    SELECT 'PS4 - Unit 2', 'PS4', 'available'
+    WHERE NOT EXISTS (SELECT 1 FROM stations WHERE name = 'PS4 - Unit 2')
+  `;
 
-    INSERT OR IGNORE INTO products (id, name, price, stock, category) VALUES
-      (1, 'Air Mineral',   3000, 50, 'drink'),
-      (2, 'Indomie Goreng',5000, 30, 'food'),
-      (3, 'Kopi Sachet',   4000, 40, 'drink'),
-      (4, 'Chiki',         3000, 60, 'snack'),
-      (5, 'Teh Botol',     5000, 30, 'drink');
-  `);
+  await sql`
+    INSERT INTO stations (name, type, status)
+    SELECT 'PS4 - Unit 3', 'PS4', 'available'
+    WHERE NOT EXISTS (SELECT 1 FROM stations WHERE name = 'PS4 - Unit 3')
+  `;
 
-  const sessionColumns = db.query(`PRAGMA table_info(sessions)`).all() as { name: string }[];
-  const hasCustomDurationColumn = sessionColumns.some((column) => column.name === "custom_duration_minutes");
-  if (!hasCustomDurationColumn) {
-    db.exec(`ALTER TABLE sessions ADD COLUMN custom_duration_minutes INTEGER;`);
-  }
+  await sql`
+    INSERT INTO stations (name, type, status)
+    SELECT 'PS5 - Unit 1', 'PS5', 'available'
+    WHERE NOT EXISTS (SELECT 1 FROM stations WHERE name = 'PS5 - Unit 1')
+  `;
 
-  console.log("✅ Database initialized");
+  await sql`
+    INSERT INTO stations (name, type, status)
+    SELECT 'PS5 - Unit 2', 'PS5', 'available'
+    WHERE NOT EXISTS (SELECT 1 FROM stations WHERE name = 'PS5 - Unit 2')
+  `;
+
+  await sql`
+    INSERT INTO timer_pricing (label, duration_minutes, price, type)
+    SELECT '1 Jam', 60, 8000, 'hourly'
+    WHERE NOT EXISTS (SELECT 1 FROM timer_pricing)
+  `;
+
+  await sql`
+    INSERT INTO timer_pricing (label, duration_minutes, price, type)
+    SELECT '2 Jam', 120, 15000, 'package'
+    WHERE NOT EXISTS (SELECT 1 FROM timer_pricing WHERE label='2 Jam')
+  `;
+
+  await sql`
+    INSERT INTO timer_pricing (label, duration_minutes, price, type)
+    SELECT '3 Jam', 180, 20000, 'package'
+    WHERE NOT EXISTS (SELECT 1 FROM timer_pricing WHERE label='3 Jam')
+  `;
+
+  await sql`
+    INSERT INTO timer_pricing (label, duration_minutes, price, type)
+    SELECT 'Main Bebas', NULL, 6000, 'open'
+    WHERE NOT EXISTS (SELECT 1 FROM timer_pricing WHERE label='Main Bebas')
+  `;
+
+  await sql`
+    INSERT INTO products (name, price, stock, category)
+    SELECT 'Air Mineral', 3000, 50, 'drink'
+    WHERE NOT EXISTS (SELECT 1 FROM products)
+  `;
+
+  console.log("✅ Database initialized (Postgres)");
 }
 
 export default db;

@@ -11,7 +11,7 @@ import products, { orders, timerPricing, cashFlow, dashboard } from "./routes/pr
 import { readJsonBody } from "./utils";
 
 // Init database
-initDB();
+await initDB();
 
 const app = new Hono();
 
@@ -96,7 +96,7 @@ app.get("/api/health", (c) => c.json({ status: "ok", app: "PS Billing", version:
 // Export endpoints
 app.get("/api/export/stations", async (c) => {
   const db = (await import("./db/database")).default;
-  const stations = db.query("SELECT * FROM stations").all();
+  const stations = await db.query("SELECT * FROM stations").all();
   const ws = XLSX.utils.json_to_sheet(stations);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Stations");
@@ -127,7 +127,7 @@ app.get("/api/export/cashflow", async (c) => {
     }
 
     query += " ORDER BY created_at DESC";
-    const cashflows = db.query(query).all(...params);
+    const cashflows = await db.query(query).all(...params);
     const ws = XLSX.utils.json_to_sheet(cashflows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Cash Flow");
@@ -168,7 +168,7 @@ app.get("/api/export/history", async (c) => {
     }
     query += ` ORDER BY s.start_time DESC`;
 
-    const history = db.query(query).all(...params);
+    const history = await db.query(query).all(...params);
     const ws = XLSX.utils.json_to_sheet(history);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "History");
