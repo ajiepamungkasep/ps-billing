@@ -5,9 +5,8 @@ import { readJsonBody } from "../utils";
 
 const stations = new Hono();
 
-// GET all stations with active session info
-stations.get("/", (c) => {
-  const rows = db.query(`
+stations.get("/", async (c) => {
+  const rows = await db.query(`
     SELECT 
       s.*,
       sess.id as session_id,
@@ -26,65 +25,43 @@ stations.get("/", (c) => {
   return c.json({ success: true, data: rows });
 });
 
-// POST add station
 stations.post("/", async (c) => {
   const body = await readJsonBody<{ name?: string; type?: string }>(c.req.raw);
   if (!body.ok) return c.json({ success: false, error: body.error }, 400);
-
   const { name, type } = body.data;
   if (!name || !type) return c.json({ success: false, error: "name & type required" }, 400);
-  
-  const result = db.query(`INSERT INTO stations (name, type) VALUES (?, ?)`).run(name, type);
+  const result = await db.query(`INSERT INTO stations (name, type) VALUES (?, ?)`).run(name, type);
   return c.json({ success: true, id: result.lastInsertRowid });
 });
 
-// PUT update station
 stations.put("/:id", async (c) => {
   const id = c.req.param("id");
   const body = await readJsonBody<{ name?: string; type?: string; status?: string }>(c.req.raw);
   if (!body.ok) return c.json({ success: false, error: body.error }, 400);
-
   const { name, type, status } = body.data;
   if (!name || !type || !status) return c.json({ success: false, error: "name, type, status required" }, 400);
-  db.query(`UPDATE stations SET name=?, type=?, status=? WHERE id=?`).run(name, type, status, id);
+  await db.query(`UPDATE stations SET name=?, type=?, status=? WHERE id=?`).run(name, type, status, id);
   return c.json({ success: true });
 });
 
-// DELETE station
-stations.delete("/:id", (c) => {
+stations.delete("/:id", async (c) => {
   const id = Number(c.req.param("id"));
-  if (!Number.isInteger(id) || id <= 0) {
-    return c.json({ success: false, error: "ID station tidak valid" }, 400);
-  }
+  if (!Number.isInteger(id) || id <= 0) return c.json({ success: false, error: "ID station tidak valid" }, 400);
 
   try {
-    const activeSession = db
-      .query(`SELECT id FROM sessions WHERE station_id = ? AND status = 'active' LIMIT 1`)
-      .get(id) as { id: number } | null;
+    const activeSession = (await db.query(`SELECT id FROM sessions WHERE station_id = ? AND status = 'active' LIMIT 1`).get(id)) as { id: number } | null;
+    if (activeSession) return c.json({ success: false, error: "Station masih dipakai (sesi aktif), hentikan dulu sebelum menghapus" }, 400);
 
-    if (activeSession) {
-      return c.json(
-        { success: false, error: "Station masih dipakai (sesi aktif), hentikan dulu sebelum menghapus" },
-        400
-      );
-    }
+    const station = (await db.query(`SELECT id FROM stations WHERE id = ?`).get(id)) as { id: number } | null;
+    if (!station) return c.json({ success: false, error: "Station tidak ditemukan" }, 404);
 
-    const station = db.query(`SELECT id FROM stations WHERE id = ?`).get(id) as { id: number } | null;
-    if (!station) {
-      return c.json({ success: false, error: "Station tidak ditemukan" }, 404);
-    }
-
-    const tx = db.transaction((stationId: number) => {
-      db.query(`DELETE FROM orders WHERE station_id = ?`).run(stationId);
-      db.query(`DELETE FROM sessions WHERE station_id = ?`).run(stationId);
-      return db.query(`DELETE FROM stations WHERE id = ?`).run(stationId);
+    const result = await db.transaction(async () => {
+      await db.query(`DELETE FROM orders WHERE station_id = ?`).run(id);
+      await db.query(`DELETE FROM sessions WHERE station_id = ?`).run(id);
+      return db.query(`DELETE FROM stations WHERE id = ?`).run(id);
     });
 
-    const result = tx(id);
-    if (!result.changes) {
-      return c.json({ success: false, error: "Station gagal dihapus" }, 500);
-    }
-
+    if (!result.changes) return c.json({ success: false, error: "Station gagal dihapus" }, 500);
     return c.json({ success: true });
   } catch (e: any) {
     console.error("[Delete Station Error]", e?.message || e);
