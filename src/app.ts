@@ -1,0 +1,111 @@
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { logger } from "hono/logger";
+import * as XLSX from "xlsx";
+import { initDB } from "./db/database";
+import stations from "./routes/stations";
+import billing from "./routes/billing";
+import products, { orders, timerPricing, cashFlow, dashboard } from "./routes/products";
+import { readJsonBody } from "./utils";
+
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin";
+const USER_PASSWORD = process.env.USER_PASSWORD || "user";
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "admin-token-valid";
+const USER_TOKEN = process.env.USER_TOKEN || "user-token-valid";
+
+let initPromise: Promise<void> | null = null;
+async function ensureDbInitialized() {
+  if (!initPromise) initPromise = initDB();
+  await initPromise;
+}
+
+export async function createApp() {
+  await ensureDbInitialized();
+
+  const app = new Hono();
+  app.use("*", logger());
+  app.use("/api/*", cors());
+
+  app.post("/api/login", async (c) => {
+    const body = await readJsonBody<{ password?: string; role?: string }>(c.req.raw);
+    if (!body.ok) return c.json({ success: false, error: body.error }, 400);
+    const { password, role } = body.data;
+    const isAdmin = role === "admin" && password === ADMIN_PASSWORD;
+    const isUser = role === "user" && password === USER_PASSWORD;
+    if (isAdmin || isUser) return c.json({ success: true, token: isAdmin ? ADMIN_TOKEN : USER_TOKEN, isAdmin });
+    return c.json({ success: false, error: "Password atau role salah!" }, 401);
+  });
+
+  app.post("/api/admin/login", async (c) => {
+    const body = await readJsonBody<{ username?: string; password?: string }>(c.req.raw);
+    if (!body.ok) return c.json({ success: false, error: body.error }, 400);
+    const { username, password } = body.data;
+    if (username === "admin" && password === ADMIN_PASSWORD) return c.json({ success: true, token: ADMIN_TOKEN });
+    return c.json({ success: false, error: "Username atau password salah!" }, 401);
+  });
+
+  app.use("/api/*", async (c, next) => {
+    const isReadMode = c.req.method === "GET";
+    const isLogin = c.req.path.includes("/login") || c.req.path.includes("/admin/login");
+    if (isLogin || isReadMode) return next();
+    const token = c.req.header("Authorization")?.replace("Bearer ", "");
+    if (token === ADMIN_TOKEN) return next();
+    return c.json({ success: false, error: "Akses ditolak - login admin diperlukan" }, 403);
+  });
+
+  app.route("/api/stations", stations);
+  app.route("/api/billing", billing);
+  app.route("/api/products", products);
+  app.route("/api/orders", orders);
+  app.route("/api/pricing", timerPricing);
+  app.route("/api/cashflow", cashFlow);
+  app.route("/api/dashboard", dashboard);
+
+  app.get("/api/health", (c) => c.json({ status: "ok", app: "PS Billing", version: "1.0.0" }));
+
+  app.get("/api/export/stations", async () => {
+    const db = (await import("./db/database")).default;
+    const rows = await db.query("SELECT * FROM stations").all();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Stations");
+    const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    return new Response(buffer, { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": "attachment; filename=stations.xlsx" } });
+  });
+
+  app.get("/api/export/cashflow", async (c) => {
+    const db = (await import("./db/database")).default;
+    const start = c.req.query("start");
+    const end = c.req.query("end");
+    const params: any[] = [];
+    let query = "SELECT * FROM cash_flow";
+    if (start && end) { query += " WHERE DATE(created_at) BETWEEN ? AND ?"; params.push(start, end); }
+    else { const date = new Date().toISOString().split("T")[0]; query += " WHERE DATE(created_at)=?"; params.push(date); }
+    query += " ORDER BY created_at DESC";
+    const rows = await db.query(query).all(...params);
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Cash Flow");
+    const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    return new Response(buffer, { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": "attachment; filename=cashflow.xlsx" } });
+  });
+
+  app.get("/api/export/history", async (c) => {
+    const db = (await import("./db/database")).default;
+    const start = c.req.query("start");
+    const end = c.req.query("end");
+    const params: any[] = [];
+    let query = `SELECT s.id, st.name as station_name, s.customer_name, tp.label as pricing_label, s.start_time, s.end_time, s.duration_minutes, s.total_price, s.status, s.notes FROM sessions s JOIN stations st ON s.station_id = st.id LEFT JOIN timer_pricing tp ON s.pricing_id = tp.id WHERE s.status='finished'`;
+    if (start && end) { query += " AND DATE(s.start_time) BETWEEN ? AND ?"; params.push(start, end); }
+    else { const date = new Date().toISOString().split("T")[0]; query += " AND DATE(s.start_time)=?"; params.push(date); }
+    query += " ORDER BY s.start_time DESC";
+    const rows = await db.query(query).all(...params);
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "History");
+    const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    return new Response(buffer, { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": "attachment; filename=history.xlsx" } });
+  });
+
+  return app;
+}

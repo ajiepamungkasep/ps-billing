@@ -13,11 +13,16 @@
 - Export per tabel ke CSV dari SQLite.
 - Import CSV ke tabel Supabase melalui Table Editor.
 
-## 4) Refactor backend ke Postgres
-Aplikasi saat ini masih memakai `bun:sqlite`, jadi butuh refactor query layer sebelum deploy penuh ke Vercel.
+## 4) Backend status
+Aplikasi sudah memakai Postgres via `DATABASE_URL` (bukan `bun:sqlite`). Pastikan env Vercel sudah terisi benar.
 
 ## 5) Checklist go-live
 - [ ] `DATABASE_URL` sudah di-set di Vercel (Production, Preview, Development)
 - [ ] Semua endpoint CRUD dites manual
 - [ ] Test redeploy: data tetap ada
 - [ ] Backup policy Supabase aktif
+
+
+## 6) Vercel routing
+- File `vercel.json` sudah diarahkan agar `/api/*` masuk ke `api/index.ts`.
+- Semua route non-API fallback ke `public/index.html` untuk SPA.
