@@ -69,25 +69,27 @@ orders.post("/", async (c) => {
 });
 
 export const timerPricing = new Hono();
-timerPricing.get("/", async (c) => c.json({ success: true, data: await db.query(`SELECT * FROM timer_pricing WHERE active=1 ORDER BY price`).all() }));
+timerPricing.get("/", async (c) => c.json({ success: true, data: await db.query(`SELECT * FROM timer_pricing WHERE active=1 ORDER BY console_type, price`).all() }));
 timerPricing.post("/", async (c) => {
-  const body = await readJsonBody<{ label?: string; duration_minutes?: number; price?: number; type?: string }>(c.req.raw);
+  const body = await readJsonBody<{ label?: string; console_type?: string; duration_minutes?: number; price?: number; type?: string }>(c.req.raw);
   if (!body.ok) return c.json({ success: false, error: body.error }, 400);
-  const { label, duration_minutes, price, type } = body.data;
+  const { label, console_type, duration_minutes, price, type } = body.data;
   const safePrice = toPositiveNumber(price);
+  const safeConsoleType = ["PS2", "PS3", "PS4"].includes(String(console_type)) ? console_type : "PS4";
   if (!label || !safePrice) return c.json({ success: false, error: "label & price required" }, 400);
-  const result = await db.query(`INSERT INTO timer_pricing (label, duration_minutes, price, type) VALUES (?,?,?,?)`).run(label, duration_minutes || null, safePrice, type || "hourly");
+  const result = await db.query(`INSERT INTO timer_pricing (label, console_type, duration_minutes, price, type) VALUES (?,?,?,?,?)`).run(label, safeConsoleType, duration_minutes || null, safePrice, type || "hourly");
   return c.json({ success: true, id: result.lastInsertRowid });
 });
 
 timerPricing.put("/:id", async (c) => {
   const id = c.req.param("id");
-  const body = await readJsonBody<{ label?: string; duration_minutes?: number; price?: number; type?: string; active?: number }>(c.req.raw);
+  const body = await readJsonBody<{ label?: string; console_type?: string; duration_minutes?: number; price?: number; type?: string; active?: number }>(c.req.raw);
   if (!body.ok) return c.json({ success: false, error: body.error }, 400);
-  const { label, duration_minutes, price, type, active } = body.data;
+  const { label, console_type, duration_minutes, price, type, active } = body.data;
   const safePrice = toPositiveNumber(price);
+  const safeConsoleType = ["PS2", "PS3", "PS4"].includes(String(console_type)) ? console_type : "PS4";
   if (!label || !safePrice) return c.json({ success: false, error: "label & price required" }, 400);
-  await db.query(`UPDATE timer_pricing SET label=?, duration_minutes=?, price=?, type=?, active=? WHERE id=?`).run(label, duration_minutes || null, safePrice, type || "hourly", active ?? 1, id);
+  await db.query(`UPDATE timer_pricing SET label=?, console_type=?, duration_minutes=?, price=?, type=?, active=? WHERE id=?`).run(label, safeConsoleType, duration_minutes || null, safePrice, type || "hourly", active ?? 1, id);
   return c.json({ success: true });
 });
 timerPricing.delete("/:id", async (c) => { await db.query(`UPDATE timer_pricing SET active=0 WHERE id=?`).run(c.req.param("id")); return c.json({ success: true }); });

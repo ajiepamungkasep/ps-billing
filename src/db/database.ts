@@ -66,6 +66,8 @@ async function verifyDB() {
   if (!result[0]?.stations) {
     throw new Error("Required tables are missing. Run supabase/schema.sql before deploying.");
   }
+  await sql`ALTER TABLE IF EXISTS timer_pricing ADD COLUMN IF NOT EXISTS console_type TEXT DEFAULT 'PS4'`;
+  await sql`UPDATE timer_pricing SET console_type = 'PS4' WHERE console_type IS NULL`;
 }
 
 export async function initDB() {
@@ -102,6 +104,7 @@ export async function initDB() {
     CREATE TABLE IF NOT EXISTS timer_pricing (
       id BIGSERIAL PRIMARY KEY,
       label TEXT NOT NULL,
+      console_type TEXT NOT NULL DEFAULT 'PS4',
       duration_minutes INTEGER,
       price NUMERIC NOT NULL,
       type TEXT DEFAULT 'hourly',
@@ -180,28 +183,31 @@ export async function initDB() {
     WHERE NOT EXISTS (SELECT 1 FROM stations WHERE name = 'PS5 - Unit 2')
   `;
 
+  await sql`ALTER TABLE IF EXISTS timer_pricing ADD COLUMN IF NOT EXISTS console_type TEXT DEFAULT 'PS4'`;
+  await sql`UPDATE timer_pricing SET console_type = 'PS4' WHERE console_type IS NULL`;
+
   await sql`
-    INSERT INTO timer_pricing (label, duration_minutes, price, type)
-    SELECT '1 Jam', 60, 8000, 'hourly'
+    INSERT INTO timer_pricing (label, console_type, duration_minutes, price, type)
+    SELECT '1 Jam', 'PS4', 60, 8000, 'hourly'
     WHERE NOT EXISTS (SELECT 1 FROM timer_pricing)
   `;
 
   await sql`
-    INSERT INTO timer_pricing (label, duration_minutes, price, type)
-    SELECT '2 Jam', 120, 15000, 'package'
-    WHERE NOT EXISTS (SELECT 1 FROM timer_pricing WHERE label='2 Jam')
+    INSERT INTO timer_pricing (label, console_type, duration_minutes, price, type)
+    SELECT '2 Jam', 'PS4', 120, 15000, 'package'
+    WHERE NOT EXISTS (SELECT 1 FROM timer_pricing WHERE label='2 Jam' AND console_type='PS4')
   `;
 
   await sql`
-    INSERT INTO timer_pricing (label, duration_minutes, price, type)
-    SELECT '3 Jam', 180, 20000, 'package'
-    WHERE NOT EXISTS (SELECT 1 FROM timer_pricing WHERE label='3 Jam')
+    INSERT INTO timer_pricing (label, console_type, duration_minutes, price, type)
+    SELECT '3 Jam', 'PS4', 180, 20000, 'package'
+    WHERE NOT EXISTS (SELECT 1 FROM timer_pricing WHERE label='3 Jam' AND console_type='PS4')
   `;
 
   await sql`
-    INSERT INTO timer_pricing (label, duration_minutes, price, type)
-    SELECT 'Main Bebas', NULL, 6000, 'open'
-    WHERE NOT EXISTS (SELECT 1 FROM timer_pricing WHERE label='Main Bebas')
+    INSERT INTO timer_pricing (label, console_type, duration_minutes, price, type)
+    SELECT 'Main Bebas', 'PS4', NULL, 6000, 'open'
+    WHERE NOT EXISTS (SELECT 1 FROM timer_pricing WHERE label='Main Bebas' AND console_type='PS4')
   `;
 
   await sql`

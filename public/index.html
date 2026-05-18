@@ -208,8 +208,26 @@
         <h1>💰 Paket Harga</h1>
         <button class="btn btn-primary" x-show="isAdmin" @click="openAddPricing()">+ Tambah Paket</button>
       </div>
-      <div class="pricing-grid">
-        <template x-for="p in pricing" :key="p.id">
+      <div class="pricing-console-grid">
+        <template x-for="consoleType in pricingConsoles" :key="consoleType">
+          <button type="button" class="pricing-console-card" :class="{active: selectedPricingConsole === consoleType}" @click="selectPricingConsole(consoleType)">
+            <span class="pricing-console-kicker">Kategori Paket</span>
+            <span class="pricing-console-title" x-text="consoleType"></span>
+            <span class="pricing-console-subtitle" x-text="pricingConsoleLabel(consoleType)"></span>
+          </button>
+        </template>
+      </div>
+      <div class="pricing-section-head">
+        <div>
+          <h2 x-text="'Paket ' + selectedPricingConsole"></h2>
+          <p x-text="'Kelola harga khusus untuk ' + pricingConsoleLabel(selectedPricingConsole)"></p>
+        </div>
+      </div>
+      <div class="pricing-empty" x-show="filteredPricing().length === 0">
+        Belum ada paket harga untuk <span x-text="selectedPricingConsole"></span>.
+      </div>
+      <div class="pricing-grid" x-show="filteredPricing().length > 0">
+        <template x-for="p in filteredPricing()" :key="p.id">
           <div class="pricing-card">
             <div class="pricing-label" x-text="p.label"></div>
             <div class="pricing-price" x-text="formatRp(p.price)"></div>
@@ -362,7 +380,7 @@
       <div class="form-group">
         <label>Pilih Paket</label>
         <div class="pricing-select-grid">
-          <template x-for="p in pricing" :key="p.id">
+          <template x-for="p in pricingOptionsForStation()" :key="p.id">
             <div class="pricing-option" :class="{selected: form.pricing_id===p.id && !form.is_custom}" @click="form.pricing_id=p.id; form.is_custom=false; form.custom_hours=1">
               <div class="po-label" x-text="p.label"></div>
               <div class="po-price" x-text="formatRp(p.price)"></div>
@@ -486,6 +504,14 @@
     <div class="modal-header"><h3 x-text="form.id ? 'Edit Produk' : '+ Tambah Produk'"></h3><button @click="modal=''" class="modal-close">✕</button></div>
     <div class="modal-body">
       <div class="form-group"><label>Nama</label><input class="input" x-model="form.name" /></div>
+      <div class="form-group">
+        <label>Konsol</label>
+        <select class="input" x-model="form.console_type">
+          <option value="PS2">PS2</option>
+          <option value="PS3">PS3</option>
+          <option value="PS4">PS4</option>
+        </select>
+      </div>
       <div class="form-group"><label>Harga (Rp)</label><input class="input" type="number" x-model="form.price" /></div>
       <div class="form-group"><label>Stok</label><input class="input" type="number" x-model="form.stock" /></div>
       <div class="form-group">
@@ -510,6 +536,14 @@
     <div class="modal-header"><h3 x-text="form.id ? 'Edit Paket' : '+ Tambah Paket'"></h3><button @click="modal=''" class="modal-close">✕</button></div>
     <div class="modal-body">
       <div class="form-group"><label>Label</label><input class="input" x-model="form.label" placeholder="2 Jam" /></div>
+      <div class="form-group">
+        <label>Konsol</label>
+        <select class="input" x-model="form.console_type">
+          <option value="PS2">PS2</option>
+          <option value="PS3">PS3</option>
+          <option value="PS4">PS4</option>
+        </select>
+      </div>
       <div class="form-group"><label>Harga (Rp)</label><input class="input" type="number" x-model="form.price" /></div>
       <div class="form-group">
         <label>Tipe</label>

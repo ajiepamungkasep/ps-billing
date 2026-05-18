@@ -20,6 +20,7 @@ create table if not exists public.products (
 create table if not exists public.timer_pricing (
   id bigserial primary key,
   label text not null,
+  console_type text not null default 'PS4' check (console_type in ('PS2', 'PS3', 'PS4')),
   duration_minutes integer,
   price numeric not null check (price > 0),
   type text default 'hourly' check (type in ('hourly','package','open')),
@@ -71,13 +72,13 @@ select * from (values
 ) as v(name, type, status)
 where not exists (select 1 from public.stations);
 
-insert into public.timer_pricing (label, duration_minutes, price, type)
+insert into public.timer_pricing (label, console_type, duration_minutes, price, type)
 select * from (values
-  ('1 Jam', 60, 8000, 'hourly'),
-  ('2 Jam', 120, 15000, 'package'),
-  ('3 Jam', 180, 20000, 'package'),
-  ('Main Bebas', null, 6000, 'open')
-) as v(label, duration_minutes, price, type)
+  ('1 Jam', 'PS4', 60, 8000, 'hourly'),
+  ('2 Jam', 'PS4', 120, 15000, 'package'),
+  ('3 Jam', 'PS4', 180, 20000, 'package'),
+  ('Main Bebas', 'PS4', null, 6000, 'open')
+) as v(label, console_type, duration_minutes, price, type)
 where not exists (select 1 from public.timer_pricing);
 
 insert into public.products (name, price, stock, category)

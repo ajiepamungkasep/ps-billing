@@ -11,6 +11,8 @@ function app() {
     stations: [],
     products: [],
     pricing: [],
+    pricingConsoles: ['PS2', 'PS3', 'PS4'],
+    selectedPricingConsole: 'PS2',
     cashflows: [],
     cfSummary: {},
     history: [],
@@ -209,6 +211,33 @@ function app() {
       return `${minutes} menit`;
     },
 
+    normalizeConsoleType(value) {
+      return this.pricingConsoles.includes(value) ? value : 'PS4';
+    },
+
+    pricingConsoleLabel(consoleType) {
+      if (consoleType === 'PS2') return 'PlayStation 2';
+      if (consoleType === 'PS3') return 'PlayStation 3';
+      return 'PlayStation 4';
+    },
+
+    inferPricingConsole(pricing) {
+      return this.normalizeConsoleType(pricing.console_type);
+    },
+
+    selectPricingConsole(consoleType) {
+      this.selectedPricingConsole = this.normalizeConsoleType(consoleType);
+    },
+
+    filteredPricing() {
+      return this.pricing.filter((p) => this.inferPricingConsole(p) === this.selectedPricingConsole);
+    },
+
+    pricingOptionsForStation() {
+      const stationType = this.normalizeConsoleType(this.selectedStation?.type);
+      return this.pricing.filter((p) => this.inferPricingConsole(p) === stationType);
+    },
+
     formatTime(dt) {
       if (!dt) return '-';
       return this.parseServerDate(dt).toLocaleString('id-ID', {
@@ -366,7 +395,12 @@ function app() {
 
     async loadPricing() {
       const r = await this.api('/pricing');
-      if (r.success) this.pricing = r.data;
+      if (r.success) {
+        this.pricing = r.data.map((p) => ({
+          ...p,
+          console_type: this.normalizeConsoleType(p.console_type)
+        }));
+      }
     },
 
     async loadCashflow() {
@@ -396,12 +430,14 @@ function app() {
     },
 
     getCustomPackageRate() {
-      const hourly = this.pricing.find(p => p.type === 'hourly') || this.pricing.find(p => p.type === 'open');
+      const options = this.pricingOptionsForStation();
+      const hourly = options.find(p => p.type === 'hourly') || options.find(p => p.type === 'open');
       return Number(hourly?.price || 0);
     },
 
     selectCustomPackage() {
-      const customBase = this.pricing.find(p => p.type === 'hourly') || this.pricing.find(p => p.type === 'open') || this.pricing[0];
+      const options = this.pricingOptionsForStation();
+      const customBase = options.find(p => p.type === 'hourly') || options.find(p => p.type === 'open') || options[0];
       if (!customBase) {
         this.showToast('Belum ada paket harga untuk custom', 'error');
         return;
@@ -603,7 +639,7 @@ function app() {
 
     openAddPricing() {
       if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
-      this.form = { label: '', price: '', type: 'package', duration_value: '', duration_unit: 'hours' };
+      this.form = { label: '', console_type: this.selectedPricingConsole, price: '', type: 'package', duration_value: '', duration_unit: 'hours' };
       this.modal = 'addPricing';
     },
 
@@ -613,6 +649,7 @@ function app() {
       const isHourUnit = minutes > 0 && minutes % 60 === 0;
       this.form = {
         ...p,
+        console_type: this.inferPricingConsole(p),
         duration_value: minutes ? (isHourUnit ? minutes / 60 : minutes) : '',
         duration_unit: isHourUnit ? 'hours' : 'minutes'
       };
@@ -633,6 +670,7 @@ function app() {
 
       const payload = {
         ...this.form,
+        console_type: this.normalizeConsoleType(this.form.console_type),
         duration_minutes: this.form.type === 'open' ? null : durationMinutes
       };
       const r = await this.api(path, {
