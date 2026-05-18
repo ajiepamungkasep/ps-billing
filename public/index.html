@@ -224,7 +224,6 @@
       <div class="pricing-section-head">
         <div>
           <h2 x-text="'Paket ' + selectedPricingConsole"></h2>
-          <p x-text="'Kelola harga khusus untuk ' + pricingConsoleLabel(selectedPricingConsole)"></p>
         </div>
       </div>
       <div class="pricing-empty" x-show="filteredPricing().length === 0">
@@ -386,7 +385,6 @@
         <div class="pricing-console-grid">
           <template x-for="consoleType in pricingConsoles" :key="consoleType">
           <div class="pricing-console-card" :class="{active: form.console_type === consoleType}" @click="selectStartConsole(consoleType)">
-            <span class="pricing-console-kicker">Jenis PS</span>
             <span class="pricing-console-title" x-text="consoleType"></span>
           </div>
         </template>
