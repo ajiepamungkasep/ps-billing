@@ -233,9 +233,9 @@ function app() {
       return this.pricing.filter((p) => this.inferPricingConsole(p) === this.selectedPricingConsole);
     },
 
-    pricingOptionsForStation() {
-      const stationType = this.normalizeConsoleType(this.selectedStation?.type);
-      return this.pricing.filter((p) => this.inferPricingConsole(p) === stationType);
+    pricingOptionsForStartBilling() {
+      const selectedConsole = this.normalizeConsoleType(this.form.console_type);
+      return this.pricing.filter((p) => this.inferPricingConsole(p) === selectedConsole);
     },
 
     formatTime(dt) {
@@ -424,19 +424,19 @@ function app() {
       if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
       this.selectedStation = station;
       this.billResult = null;
-      this.form = { customer_name: '', pricing_id: null, notes: '', is_custom: false, custom_hours: 1 };
+      this.form = { customer_name: '', console_type: 'PS2', pricing_id: null, notes: '', is_custom: false, custom_hours: 1 };
       if (!this.pricing.length) this.loadPricing();
       this.modal = 'start';
     },
 
     getCustomPackageRate() {
-      const options = this.pricingOptionsForStation();
+      const options = this.pricingOptionsForStartBilling();
       const hourly = options.find(p => p.type === 'hourly') || options.find(p => p.type === 'open');
       return Number(hourly?.price || 0);
     },
 
     selectCustomPackage() {
-      const options = this.pricingOptionsForStation();
+      const options = this.pricingOptionsForStartBilling();
       const customBase = options.find(p => p.type === 'hourly') || options.find(p => p.type === 'open') || options[0];
       if (!customBase) {
         this.showToast('Belum ada paket harga untuk custom', 'error');
@@ -445,6 +445,13 @@ function app() {
       this.form.is_custom = true;
       this.form.custom_hours = this.form.custom_hours || 1;
       this.form.pricing_id = customBase.id;
+    },
+
+    selectStartConsole(consoleType) {
+      this.form.console_type = this.normalizeConsoleType(consoleType);
+      this.form.pricing_id = null;
+      this.form.is_custom = false;
+      this.form.custom_hours = 1;
     },
 
     async startBilling() {

@@ -378,9 +378,24 @@
         <input class="input" x-model="form.customer_name" placeholder="Guest" />
       </div>
       <div class="form-group">
+        <label>Pilih PS</label>
+        <div class="pricing-console-grid">
+          <template x-for="consoleType in pricingConsoles" :key="consoleType">
+            <button type="button" class="pricing-console-card" :class="{active: form.console_type === consoleType}" @click="selectStartConsole(consoleType)">
+              <span class="pricing-console-kicker">Jenis PS</span>
+              <span class="pricing-console-title" x-text="consoleType"></span>
+              <span class="pricing-console-subtitle" x-text="pricingConsoleLabel(consoleType)"></span>
+            </button>
+          </template>
+        </div>
+      </div>
+      <div class="form-group">
         <label>Pilih Paket</label>
+        <div class="pricing-empty" x-show="pricingOptionsForStartBilling().length === 0">
+          Belum ada paket harga untuk <span x-text="form.console_type"></span>.
+        </div>
         <div class="pricing-select-grid">
-          <template x-for="p in pricingOptionsForStation()" :key="p.id">
+          <template x-for="p in pricingOptionsForStartBilling()" :key="p.id">
             <div class="pricing-option" :class="{selected: form.pricing_id===p.id && !form.is_custom}" @click="form.pricing_id=p.id; form.is_custom=false; form.custom_hours=1">
               <div class="po-label" x-text="p.label"></div>
               <div class="po-price" x-text="formatRp(p.price)"></div>
