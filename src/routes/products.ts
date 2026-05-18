@@ -82,7 +82,12 @@ timerPricing.put("/inventory/:consoleType", async (c) => {
   if (!["PS2", "PS3", "PS4"].includes(consoleType) || safeTotalUnits === null) {
     return c.json({ success: false, error: "console_type dan total_units tidak valid" }, 400);
   }
-  await db.query(`UPDATE console_inventory SET total_units=?, updated_at=NOW() WHERE console_type=?`).run(safeTotalUnits, consoleType);
+  await db.query(`
+    INSERT INTO console_inventory (console_type, total_units, updated_at)
+    VALUES (?, ?, NOW())
+    ON CONFLICT (console_type)
+    DO UPDATE SET total_units = EXCLUDED.total_units, updated_at = NOW()
+  `).run(consoleType, safeTotalUnits);
   return c.json({ success: true });
 });
 timerPricing.post("/", async (c) => {
