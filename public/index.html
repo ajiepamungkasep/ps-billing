@@ -213,7 +213,6 @@
           <div class="pricing-console-card" :class="{active: selectedPricingConsole === consoleType}" @click="selectPricingConsole(consoleType)">
             <span class="pricing-console-kicker">Kategori Paket</span>
             <span class="pricing-console-title" x-text="consoleType"></span>
-            <span class="pricing-console-subtitle" x-text="pricingConsoleLabel(consoleType)"></span>
             <span class="pricing-console-capacity" x-text="'Total unit: ' + consoleInventoryTotal(consoleType)"></span>
             <div class="pricing-console-admin" x-show="isAdmin" @click.stop>
               <input class="input pricing-console-input" type="number" min="0" x-model="consoleInventoryDraft[consoleType]" />
@@ -389,7 +388,6 @@
           <div class="pricing-console-card" :class="{active: form.console_type === consoleType}" @click="selectStartConsole(consoleType)">
             <span class="pricing-console-kicker">Jenis PS</span>
             <span class="pricing-console-title" x-text="consoleType"></span>
-            <span class="pricing-console-subtitle" x-text="pricingConsoleLabel(consoleType)"></span>
           </div>
         </template>
       </div>

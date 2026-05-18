@@ -87,7 +87,7 @@ timerPricing.put("/inventory/:consoleType", async (c) => {
     VALUES (?, ?, NOW())
     ON CONFLICT (console_type)
     DO UPDATE SET total_units = EXCLUDED.total_units, updated_at = NOW()
-  `).run(consoleType, safeTotalUnits);
+  `).all(consoleType, safeTotalUnits);
   return c.json({ success: true });
 });
 timerPricing.post("/", async (c) => {

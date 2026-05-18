@@ -218,9 +218,7 @@ function app() {
     },
 
     pricingConsoleLabel(consoleType) {
-      if (consoleType === 'PS2') return 'Konsol 2';
-      if (consoleType === 'PS3') return 'Konsol 3';
-      return 'Konsol 4';
+      return consoleType;
     },
 
     inferPricingConsole(pricing) {
