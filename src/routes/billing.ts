@@ -3,15 +3,17 @@ import db from "../db/database.js";
 import { parseSqliteDateTime, readJsonBody, toPositiveInteger } from "../utils.js";
 
 const billing = new Hono();
+const CONSOLE_TYPES = new Set(["PS2", "PS3", "PS4"]);
 
 billing.post("/start", async (c) => {
-  const body = await readJsonBody<{ station_id?: number; pricing_id?: number; customer_name?: string; notes?: string; timerMode?: string; custom_duration_minutes?: number }>(c.req.raw);
+  const body = await readJsonBody<{ station_id?: number; pricing_id?: number; console_type?: string; customer_name?: string; notes?: string; timerMode?: string; custom_duration_minutes?: number }>(c.req.raw);
   if (!body.ok) return c.json({ success: false, error: body.error }, 400);
 
-  const { station_id, pricing_id, customer_name, notes, timerMode, custom_duration_minutes } = body.data;
+  const { station_id, pricing_id, console_type, customer_name, notes, timerMode, custom_duration_minutes } = body.data;
   const safeStationId = toPositiveInteger(station_id);
   const safePricingId = toPositiveInteger(pricing_id);
-  if (!safeStationId || !safePricingId) return c.json({ success: false, error: "station_id & pricing_id required" }, 400);
+  const safeConsoleType = CONSOLE_TYPES.has(String(console_type)) ? String(console_type) : null;
+  if (!safeStationId || !safePricingId || !safeConsoleType) return c.json({ success: false, error: "station_id, pricing_id, dan console_type wajib diisi" }, 400);
 
   const safeCustomDuration = custom_duration_minutes ? toPositiveInteger(custom_duration_minutes) : null;
   const station = (await db.query(`SELECT * FROM stations WHERE id=?`).get(safeStationId)) as any;
@@ -20,11 +22,24 @@ billing.post("/start", async (c) => {
 
   const pricing = (await db.query(`SELECT * FROM timer_pricing WHERE id=?`).get(safePricingId)) as any;
   if (!pricing) return c.json({ success: false, error: "Paket tidak ditemukan" }, 404);
+  if ((pricing.console_type || "PS4") !== safeConsoleType) {
+    return c.json({ success: false, error: `Paket ${pricing.label} tidak cocok untuk ${safeConsoleType}` }, 400);
+  }
 
-  const session = await db.query(`INSERT INTO sessions (station_id, pricing_id, customer_name, notes, custom_duration_minutes) VALUES (?, ?, ?, ?, ?)`).run(safeStationId, safePricingId, customer_name || null, notes || null, safeCustomDuration);
+  const inventory = (await db.query(`SELECT total_units FROM console_inventory WHERE console_type=? LIMIT 1`).get(safeConsoleType)) as any;
+  const totalUnits = Number(inventory?.total_units ?? 0);
+  const activeCount = Number(((await db.query(`SELECT COUNT(*) as c FROM sessions WHERE status='active' AND console_type=?`).get(safeConsoleType)) as any)?.c || 0);
+  if (totalUnits > 0 && activeCount >= totalUnits) {
+    return c.json({
+      success: false,
+      error: `Semua unit ${safeConsoleType} sedang dipakai (${activeCount}/${totalUnits}). Cek kembali pilihan PS atau hentikan sesi yang masih aktif.`,
+    }, 400);
+  }
+
+  const session = await db.query(`INSERT INTO sessions (station_id, console_type, pricing_id, customer_name, notes, custom_duration_minutes) VALUES (?, ?, ?, ?, ?, ?)`).run(safeStationId, safeConsoleType, safePricingId, customer_name || null, notes || null, safeCustomDuration);
   await db.query(`UPDATE stations SET status='in_use' WHERE id=?`).run(safeStationId);
 
-  return c.json({ success: true, session_id: session.lastInsertRowid, station: station.name, pricing: pricing.label, start_time: new Date().toISOString(), timerMode });
+  return c.json({ success: true, session_id: session.lastInsertRowid, station: station.name, console_type: safeConsoleType, pricing: pricing.label, start_time: new Date().toISOString(), timerMode });
 });
 
 billing.post("/stop/:session_id", async (c) => {

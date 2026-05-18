@@ -70,6 +70,21 @@ orders.post("/", async (c) => {
 
 export const timerPricing = new Hono();
 timerPricing.get("/", async (c) => c.json({ success: true, data: await db.query(`SELECT * FROM timer_pricing WHERE active=1 ORDER BY console_type, price`).all() }));
+timerPricing.get("/inventory", async (c) => {
+  const rows = await db.query(`SELECT console_type, total_units, updated_at FROM console_inventory ORDER BY console_type`).all();
+  return c.json({ success: true, data: rows });
+});
+timerPricing.put("/inventory/:consoleType", async (c) => {
+  const consoleType = c.req.param("consoleType");
+  const body = await readJsonBody<{ total_units?: number }>(c.req.raw);
+  if (!body.ok) return c.json({ success: false, error: body.error }, 400);
+  const safeTotalUnits = toNonNegativeInteger(body.data.total_units);
+  if (!["PS2", "PS3", "PS4"].includes(consoleType) || safeTotalUnits === null) {
+    return c.json({ success: false, error: "console_type dan total_units tidak valid" }, 400);
+  }
+  await db.query(`UPDATE console_inventory SET total_units=?, updated_at=NOW() WHERE console_type=?`).run(safeTotalUnits, consoleType);
+  return c.json({ success: true });
+});
 timerPricing.post("/", async (c) => {
   const body = await readJsonBody<{ label?: string; console_type?: string; duration_minutes?: number; price?: number; type?: string }>(c.req.raw);
   if (!body.ok) return c.json({ success: false, error: body.error }, 400);

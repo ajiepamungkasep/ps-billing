@@ -13,6 +13,8 @@ function app() {
     pricing: [],
     pricingConsoles: ['PS2', 'PS3', 'PS4'],
     selectedPricingConsole: 'PS2',
+    consoleInventory: {},
+    consoleInventoryDraft: {},
     cashflows: [],
     cfSummary: {},
     history: [],
@@ -212,7 +214,7 @@ function app() {
     },
 
     normalizeConsoleType(value) {
-      return this.pricingConsoles.includes(value) ? value : 'PS4';
+      return this.pricingConsoles.includes(value) ? value : '';
     },
 
     pricingConsoleLabel(consoleType) {
@@ -233,8 +235,13 @@ function app() {
       return this.pricing.filter((p) => this.inferPricingConsole(p) === this.selectedPricingConsole);
     },
 
+    consoleInventoryTotal(consoleType) {
+      return Number(this.consoleInventory[consoleType] || 0);
+    },
+
     pricingOptionsForStartBilling() {
       const selectedConsole = this.normalizeConsoleType(this.form.console_type);
+      if (!selectedConsole) return [];
       return this.pricing.filter((p) => this.inferPricingConsole(p) === selectedConsole);
     },
 
@@ -401,6 +408,37 @@ function app() {
           console_type: this.normalizeConsoleType(p.console_type)
         }));
       }
+      await this.loadConsoleInventory();
+    },
+
+    async loadConsoleInventory() {
+      const r = await this.api('/pricing/inventory');
+      if (!r.success) return;
+      this.consoleInventory = {};
+      this.consoleInventoryDraft = {};
+      r.data.forEach((item) => {
+        const consoleType = this.normalizeConsoleType(item.console_type);
+        const total = Number(item.total_units || 0);
+        if (!consoleType) return;
+        this.consoleInventory[consoleType] = total;
+        this.consoleInventoryDraft[consoleType] = total;
+      });
+    },
+
+    async saveConsoleInventory(consoleType) {
+      if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
+      const totalUnits = Math.max(0, parseInt(this.consoleInventoryDraft[consoleType], 10) || 0);
+      const r = await this.api(`/pricing/inventory/${consoleType}`, {
+        method: 'PUT',
+        body: JSON.stringify({ total_units: totalUnits })
+      });
+      if (r.success) {
+        this.consoleInventory[consoleType] = totalUnits;
+        this.consoleInventoryDraft[consoleType] = totalUnits;
+        this.showToast(`Total unit ${consoleType} disimpan`);
+      } else {
+        this.showToast(r.error || 'Gagal menyimpan total unit', 'error');
+      }
     },
 
     async loadCashflow() {
@@ -424,7 +462,7 @@ function app() {
       if (!this.isAdmin) return this.showToast('Login admin diperlukan', 'error');
       this.selectedStation = station;
       this.billResult = null;
-      this.form = { customer_name: '', console_type: 'PS2', pricing_id: null, notes: '', is_custom: false, custom_hours: 1 };
+      this.form = { customer_name: '', console_type: '', pricing_id: null, notes: '', is_custom: false, custom_hours: 1 };
       if (!this.pricing.length) this.loadPricing();
       this.modal = 'start';
     },
@@ -456,11 +494,16 @@ function app() {
 
     async startBilling() {
       if (!this.form.pricing_id) return;
+      if (!this.form.console_type) {
+        this.showToast('Pilih jenis PS terlebih dahulu', 'error');
+        return;
+      }
       const customHours = Math.max(1, parseInt(this.form.custom_hours, 10) || 1);
       const r = await this.api('/billing/start', {
         method: 'POST',
         body: JSON.stringify({
           station_id: this.selectedStation.id,
+          console_type: this.form.console_type,
           pricing_id: this.form.pricing_id,
           customer_name: this.form.customer_name,
           notes: this.form.notes,

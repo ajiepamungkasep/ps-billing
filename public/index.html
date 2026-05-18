@@ -214,6 +214,11 @@
             <span class="pricing-console-kicker">Kategori Paket</span>
             <span class="pricing-console-title" x-text="consoleType"></span>
             <span class="pricing-console-subtitle" x-text="pricingConsoleLabel(consoleType)"></span>
+            <span class="pricing-console-capacity" x-text="'Total unit: ' + consoleInventoryTotal(consoleType)"></span>
+            <div class="pricing-console-admin" x-show="isAdmin" @click.stop>
+              <input class="input pricing-console-input" type="number" min="0" x-model="consoleInventoryDraft[consoleType]" />
+              <button type="button" class="btn btn-sm btn-secondary" @click="saveConsoleInventory(consoleType)">Simpan Unit</button>
+            </div>
           </button>
         </template>
       </div>
@@ -391,7 +396,10 @@
       </div>
       <div class="form-group">
         <label>Pilih Paket</label>
-        <div class="pricing-empty" x-show="pricingOptionsForStartBilling().length === 0">
+        <div class="pricing-empty" x-show="!form.console_type">
+          Pilih jenis PS terlebih dahulu untuk melihat paket yang tersedia.
+        </div>
+        <div class="pricing-empty" x-show="form.console_type && pricingOptionsForStartBilling().length === 0">
           Belum ada paket harga untuk <span x-text="form.console_type"></span>.
         </div>
         <div class="pricing-select-grid">
@@ -421,7 +429,7 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" @click="modal=''">Batal</button>
-      <button class="btn btn-primary" @click="startBilling()" :disabled="!form.pricing_id">▶ Mulai</button>
+      <button class="btn btn-primary" @click="startBilling()" :disabled="!form.console_type || !form.pricing_id">▶ Mulai</button>
     </div>
   </div>
 </div>

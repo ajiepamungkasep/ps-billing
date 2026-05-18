@@ -66,8 +66,22 @@ async function verifyDB() {
   if (!result[0]?.stations) {
     throw new Error("Required tables are missing. Run supabase/schema.sql before deploying.");
   }
+  await sql`ALTER TABLE IF EXISTS sessions ADD COLUMN IF NOT EXISTS console_type TEXT DEFAULT 'PS4'`;
   await sql`ALTER TABLE IF EXISTS timer_pricing ADD COLUMN IF NOT EXISTS console_type TEXT DEFAULT 'PS4'`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS console_inventory (
+      console_type TEXT PRIMARY KEY,
+      total_units INTEGER NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
   await sql`UPDATE timer_pricing SET console_type = 'PS4' WHERE console_type IS NULL`;
+  await sql`UPDATE sessions SET console_type = 'PS4' WHERE console_type IS NULL`;
+  await sql`
+    INSERT INTO console_inventory (console_type, total_units)
+    VALUES ('PS2', 0), ('PS3', 0), ('PS4', 0)
+    ON CONFLICT (console_type) DO NOTHING
+  `;
 }
 
 export async function initDB() {
@@ -116,6 +130,7 @@ export async function initDB() {
     CREATE TABLE IF NOT EXISTS sessions (
       id BIGSERIAL PRIMARY KEY,
       station_id BIGINT NOT NULL REFERENCES stations(id),
+      console_type TEXT NOT NULL DEFAULT 'PS4',
       customer_name TEXT,
       pricing_id BIGINT REFERENCES timer_pricing(id),
       custom_duration_minutes INTEGER,
@@ -154,6 +169,14 @@ export async function initDB() {
   `;
 
   await sql`
+    CREATE TABLE IF NOT EXISTS console_inventory (
+      console_type TEXT PRIMARY KEY,
+      total_units INTEGER NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+
+  await sql`
     INSERT INTO stations (name, type, status)
     SELECT 'PS4 - Unit 1', 'PS4', 'available'
     WHERE NOT EXISTS (SELECT 1 FROM stations)
@@ -184,7 +207,15 @@ export async function initDB() {
   `;
 
   await sql`ALTER TABLE IF EXISTS timer_pricing ADD COLUMN IF NOT EXISTS console_type TEXT DEFAULT 'PS4'`;
+  await sql`ALTER TABLE IF EXISTS sessions ADD COLUMN IF NOT EXISTS console_type TEXT DEFAULT 'PS4'`;
   await sql`UPDATE timer_pricing SET console_type = 'PS4' WHERE console_type IS NULL`;
+  await sql`UPDATE sessions SET console_type = 'PS4' WHERE console_type IS NULL`;
+
+  await sql`
+    INSERT INTO console_inventory (console_type, total_units)
+    VALUES ('PS2', 0), ('PS3', 0), ('PS4', 0)
+    ON CONFLICT (console_type) DO NOTHING
+  `;
 
   await sql`
     INSERT INTO timer_pricing (label, console_type, duration_minutes, price, type)

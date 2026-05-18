@@ -30,6 +30,7 @@ create table if not exists public.timer_pricing (
 create table if not exists public.sessions (
   id bigserial primary key,
   station_id bigint not null references public.stations(id),
+  console_type text not null default 'PS4' check (console_type in ('PS2','PS3','PS4')),
   customer_name text,
   pricing_id bigint references public.timer_pricing(id),
   custom_duration_minutes integer,
@@ -62,6 +63,12 @@ create table if not exists public.cash_flow (
   created_at timestamptz default now()
 );
 
+create table if not exists public.console_inventory (
+  console_type text primary key check (console_type in ('PS2','PS3','PS4')),
+  total_units integer not null default 0 check (total_units >= 0),
+  updated_at timestamptz default now()
+);
+
 insert into public.stations (name, type, status)
 select * from (values
   ('PS4 - Unit 1', 'PS4', 'available'),
@@ -90,3 +97,11 @@ select * from (values
   ('Teh Botol', 5000, 30, 'drink')
 ) as v(name, price, stock, category)
 where not exists (select 1 from public.products);
+
+insert into public.console_inventory (console_type, total_units)
+select * from (values
+  ('PS2', 0),
+  ('PS3', 0),
+  ('PS4', 0)
+) as v(console_type, total_units)
+on conflict (console_type) do nothing;
