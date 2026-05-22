@@ -357,7 +357,8 @@ function app() {
               if (this.isAdmin) {
                 this.triggerAlarm(station);
               }
-              this.autoStopStation(station);
+              // Jangan auto-stop otomatis; cukup alarm agar sesi tidak tiba-tiba berhenti
+              // (menghindari station terlihat 'hilang' saat masih dipakai).
             }
           } else {
             // Main bebas / open: countup

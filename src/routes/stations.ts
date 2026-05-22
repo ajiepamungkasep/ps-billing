@@ -18,7 +18,13 @@ stations.get("/", async (c) => {
       tp.price as pricing_price,
       tp.type as pricing_type
     FROM stations s
-    LEFT JOIN sessions sess ON sess.station_id = s.id AND sess.status = 'active'
+    LEFT JOIN LATERAL (
+      SELECT *
+      FROM sessions
+      WHERE station_id = s.id AND status = 'active'
+      ORDER BY start_time DESC, id DESC
+      LIMIT 1
+    ) sess ON TRUE
     LEFT JOIN timer_pricing tp ON tp.id = sess.pricing_id
     ORDER BY s.id
   `).all();
