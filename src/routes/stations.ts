@@ -21,7 +21,7 @@ stations.get("/", async (c) => {
     LEFT JOIN LATERAL (
       SELECT *
       FROM sessions
-      WHERE station_id = s.id AND status = 'active'
+      WHERE station_id = s.id AND status = 'active' AND s.status = 'in_use'
       ORDER BY start_time DESC, id DESC
       LIMIT 1
     ) sess ON TRUE

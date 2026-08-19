@@ -29,6 +29,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Command Code local tooling
+.commandcode/
+
 # Temporary files
 *.tmp
 *.temp

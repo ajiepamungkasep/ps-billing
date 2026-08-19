@@ -1,4 +1,5 @@
-import postgres from "postgres";
+import { AsyncLocalStorage } from "node:async_hooks";
+import postgres, { type TransactionSql } from "postgres";
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -11,8 +12,13 @@ const sql = postgres(connectionString, {
   idle_timeout: 20,
   connect_timeout: 10,
   prepare: false,
-  ssl: "require",
+  // PGSSL=0 untuk Postgres lokal tanpa SSL (dev); default "require" untuk Supabase
+  ssl: process.env.PGSSL === "0" ? false : "require",
 });
+
+// Menyimpan client transaksi aktif (dari db.transaction) per async context,
+// supaya query yang dipakai di dalam transaksi benar-benar memakai koneksi transaksi.
+const txStorage = new AsyncLocalStorage<TransactionSql<{}>>();
 
 function toPgPlaceholders(query: string) {
   let idx = 0;
@@ -27,9 +33,13 @@ export type RunResult = {
 class Statement {
   constructor(private readonly queryText: string) {}
 
+  private get client() {
+    return txStorage.getStore() ?? sql;
+  }
+
   async all(...params: any[]) {
     const pgQuery = toPgPlaceholders(this.queryText);
-    return sql.unsafe(pgQuery, params);
+    return this.client.unsafe(pgQuery, params);
   }
 
   async get(...params: any[]) {
@@ -41,7 +51,7 @@ class Statement {
     const pgQuery = toPgPlaceholders(this.queryText);
     const returningId = /\binsert\b/i.test(this.queryText) && !/\breturning\b/i.test(this.queryText);
     const finalQuery = returningId ? `${pgQuery} RETURNING id` : pgQuery;
-    const rows = await sql.unsafe(finalQuery, params);
+    const rows = await this.client.unsafe(finalQuery, params);
     const firstRow = rows[0] as Record<string, any> | undefined;
     return {
       changes: rows.count ?? rows.length,
@@ -55,8 +65,7 @@ const db = {
     return new Statement(queryText);
   },
   async transaction<T>(fn: () => Promise<T>): Promise<T> {
-    const result = await sql.begin(async () => fn());
-    return result as T;
+    return await sql.begin(async (tx) => txStorage.run(tx, fn)) as T;
   },
 };
 

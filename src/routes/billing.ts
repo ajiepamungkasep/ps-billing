@@ -28,11 +28,13 @@ billing.post("/start", async (c) => {
 
   const inventory = (await db.query(`SELECT total_units FROM console_inventory WHERE console_type=? LIMIT 1`).get(safeConsoleType)) as any;
   const totalUnits = Number(inventory?.total_units ?? 0);
-  const activeCount = Number(((await db.query(`SELECT COUNT(*) as c FROM sessions WHERE status='active' AND console_type=?`).get(safeConsoleType)) as any)?.c || 0);
-  if (totalUnits > 0 && activeCount >= totalUnits) {
+  // Kapasitas dihitung dari station yang benar-benar sedang in_use,
+  // supaya sesi yang nyangkut "active" di station available tidak menghabiskan kuota.
+  const inUseCount = Number(((await db.query(`SELECT COUNT(*) as c FROM stations WHERE status='in_use' AND type=?`).get(safeConsoleType)) as any)?.c || 0);
+  if (totalUnits > 0 && inUseCount >= totalUnits) {
     return c.json({
       success: false,
-      error: `Semua unit ${safeConsoleType} sedang dipakai (${activeCount}/${totalUnits}). Cek kembali pilihan PS atau hentikan sesi yang masih aktif.`,
+      error: `Semua unit ${safeConsoleType} sedang dipakai (${inUseCount}/${totalUnits}). Cek kembali pilihan PS atau hentikan sesi yang masih aktif.`,
     }, 400);
   }
 
@@ -44,22 +46,32 @@ billing.post("/start", async (c) => {
 
 billing.post("/stop/:session_id", async (c) => {
   const sessionId = c.req.param("session_id");
-  const session = (await db.query(`SELECT s.*, tp.price, tp.duration_minutes, tp.type as pricing_type, tp.label FROM sessions s LEFT JOIN timer_pricing tp ON tp.id = s.pricing_id WHERE s.id=? AND s.status='active'`).get(sessionId)) as any;
-  if (!session) return c.json({ success: false, error: "Session tidak ditemukan atau sudah selesai" }, 404);
+  // Jadikan stop idempoten & atomik: transaksi penuh, sehingga request ganda
+  // (retry Vercel, stop ganda dari browser/tab) tidak menggandakan cash_flow.
+  const result = await db.transaction(async () => {
+    const session = (await db.query(`SELECT s.*, tp.price, tp.duration_minutes, tp.type as pricing_type, tp.label FROM sessions s LEFT JOIN timer_pricing tp ON tp.id = s.pricing_id WHERE s.id=? AND s.status='active' FOR UPDATE OF s`).get(sessionId)) as any;
+    if (!session) return null;
 
-  const start = parseSqliteDateTime(session.start_time);
-  if (!start) return c.json({ success: false, error: "Waktu mulai sesi tidak valid" }, 500);
-  const diffMinutes = Math.max(1, Math.ceil((Date.now() - start.getTime()) / 60000));
-  const billingTotal = session.pricing_type === "open" ? Math.ceil(diffMinutes / 60) * Number(session.price) : Number(session.price);
+    const start = parseSqliteDateTime(session.start_time);
+    if (!start) throw new Error("Waktu mulai sesi tidak valid");
+    const diffMinutes = Math.max(1, Math.ceil((Date.now() - start.getTime()) / 60000));
+    const billingTotal = session.pricing_type === "open" ? Math.ceil(diffMinutes / 60) * Number(session.price) : Number(session.price);
 
-  const orderTotal = Number(((await db.query(`SELECT COALESCE(SUM(subtotal), 0) as total FROM orders WHERE session_id=?`).get(sessionId)) as any)?.total || 0);
-  const grandTotal = billingTotal + orderTotal;
+    const orderTotal = Number(((await db.query(`SELECT COALESCE(SUM(subtotal), 0) as total FROM orders WHERE session_id=?`).get(sessionId)) as any)?.total || 0);
+    const grandTotal = billingTotal + orderTotal;
 
-  await db.query(`UPDATE sessions SET status='finished', end_time=NOW(), duration_minutes=?, total_price=? WHERE id=?`).run(diffMinutes, grandTotal, sessionId);
-  await db.query(`UPDATE stations SET status='available' WHERE id=?`).run(session.station_id);
-  await db.query(`INSERT INTO cash_flow (type, category, amount, description, ref_id) VALUES ('income', 'billing', ?, ?, ?)`).run(grandTotal, `Sesi ${session.label} - ${session.customer_name || "Guest"}`, sessionId);
+    // Finalisasi sesi ini, dan sekaligus tutup semua sesi 'active' lain di station yang sama
+    // (nyangkut dari stop lama/request ganda) supaya tidak menghabiskan kapasitas.
+    await db.query(`UPDATE sessions SET status='finished', end_time=NOW(), duration_minutes=?, total_price=? WHERE id=?`).run(diffMinutes, grandTotal, sessionId);
+    await db.query(`UPDATE sessions SET status='finished', end_time=NOW() WHERE station_id=? AND status='active' AND id<>?`).run(session.station_id, sessionId);
+    await db.query(`UPDATE stations SET status='available' WHERE id=?`).run(session.station_id);
+    await db.query(`INSERT INTO cash_flow (type, category, amount, description, ref_id) VALUES ('income', 'billing', ?, ?, ?)`).run(grandTotal, `Sesi ${session.label} - ${session.customer_name || "Guest"}`, sessionId);
 
-  return c.json({ success: true, session_id: sessionId, duration_minutes: diffMinutes, billing_price: billingTotal, order_total: orderTotal, grand_total: grandTotal });
+    return { session_id: sessionId, duration_minutes: diffMinutes, billing_price: billingTotal, order_total: orderTotal, grand_total: grandTotal };
+  });
+
+  if (!result) return c.json({ success: false, error: "Session tidak ditemukan atau sudah selesai" }, 404);
+  return c.json({ success: true, ...result });
 });
 
 billing.get("/active", async (c) => {
